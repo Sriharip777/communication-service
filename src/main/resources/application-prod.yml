@@ -1,0 +1,39 @@
+server:
+  port: 8084
+
+spring:
+  data:
+    mongodb:
+      uri: ${MONGODB_URI}
+    redis:
+      host: ${REDIS_HOST}
+      port: ${REDIS_PORT}
+      password: ${REDIS_PASSWORD}
+
+  kafka:
+    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS}
+
+eureka:
+  client:
+    service-url:
+      defaultZone: ${EUREKA_SERVER_URL}
+
+hundredms:
+  api:
+    management-token: ${HUNDREDMS_MANAGEMENT_TOKEN}
+    app-access-key: ${HUNDREDMS_APP_ACCESS_KEY}
+    app-secret: ${HUNDREDMS_APP_SECRET}
+    base-url: https://api.100ms.live/v2
+  templates:
+    default-template-id: ${HUNDREDMS_TEMPLATE_ID}
+
+logging:
+  level:
+    root: WARN
+    com.ton.communication: INFO
+  file:
+    name: /var/log/communication-service/application.log
+
+app:
+  cors:
+    allowed-origins: ${ALLOWED_ORIGINS}

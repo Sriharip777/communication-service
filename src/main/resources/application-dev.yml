@@ -1,0 +1,21 @@
+spring:
+  data:
+    mongodb:
+      uri: mongodb://localhost:27017/tutoring_communication_dev
+    redis:
+      host: localhost
+
+hundredms:
+  api:
+    base-url: https://api.100ms.live/v2
+
+logging:
+  level:
+    com.ton.communication: DEBUG
+
+app:
+  cors:
+    allowed-origins:
+      - http://localhost:3000
+      - http://localhost:5173
+      - http://localhost:8080

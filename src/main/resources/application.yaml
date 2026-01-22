@@ -1,0 +1,139 @@
+server:
+  port: 8083
+  compression:
+    enabled: true
+    mime-types: application/json,application/xml,text/html,text/xml,text/plain
+  error:
+    include-message: always
+    include-binding-errors: always
+
+spring:
+  application:
+    name: communication-service
+
+  # MongoDB Configuration
+  data:
+    mongodb:
+      uri: mongodb+srv://educonnect:educonnect123@educonnect.sjmtr4c.mongodb.net/learning_management?retryWrites=true&w=majority&maxIdleTimeMS=60000&maxPoolSize=50&minPoolSize=10
+      database: learning_management
+      auto-index-creation: true
+      uuid-representation: standard
+
+    # Redis Configuration
+    redis:
+      host: localhost
+      port: 6379
+      timeout: 6000ms
+      lettuce:
+        pool:
+          max-active: 8
+          max-idle: 8
+          min-idle: 2
+          max-wait: -1ms
+
+  # Kafka Configuration
+  kafka:
+    bootstrap-servers: localhost:9092
+    consumer:
+      group-id: communication-service-group
+      auto-offset-reset: earliest
+      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      value-deserializer: org.springframework.kafka.support.serializer.JsonDeserializer
+      properties:
+        spring.json.trusted.packages: "*"
+    producer:
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.springframework.kafka.support.serializer.JsonSerializer
+      acks: all
+      retries: 3
+
+    # Topics
+    topics:
+      video-session-events: video-session-events
+      message-events: message-events
+      class-events: class-events
+      booking-events: booking-events
+
+# Eureka Configuration
+eureka:
+  client:
+    service-url:
+      defaultZone: http://localhost:8761/eureka/
+    fetch-registry: true
+    register-with-eureka: true
+  instance:
+    prefer-ip-address: true
+    instance-id: ${spring.application.name}:${spring.application.instance_id:${random.value}}
+    lease-renewal-interval-in-seconds: 10
+    lease-expiration-duration-in-seconds: 30
+
+# 100ms Configuration
+hundredms:
+  api:
+    base-url: https://api.100ms.live/v2
+    management-token: ${HUNDREDMS_MANAGEMENT_TOKEN:your-management-token}
+    app-access-key: ${HUNDREDMS_APP_ACCESS_KEY:your-app-access-key}
+    app-secret: ${HUNDREDMS_APP_SECRET:your-app-secret}
+  recording:
+    enabled: true
+    quality: 720p
+    retention-days: 30
+  templates:
+    default-template-id: ${HUNDREDMS_TEMPLATE_ID:your-template-id}
+
+# WebSocket Configuration
+websocket:
+  allowed-origins:
+    - http://localhost:3000
+    - http://localhost:5173
+  message-broker:
+    prefix: /app
+    destination-prefix: /topic
+  endpoint: /ws
+
+# Message Configuration
+message:
+  retention-days: 30
+  max-message-length: 2000
+  typing-indicator-timeout-seconds: 5
+
+# Actuator Configuration
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics,prometheus
+  endpoint:
+    health:
+      show-details: always
+  metrics:
+    export:
+      prometheus:
+        enabled: true
+
+# Logging Configuration
+logging:
+  level:
+    root: INFO
+    com.tcon.communication_service: DEBUG
+    org.springframework.data.mongodb: DEBUG
+    org.springframework.kafka: INFO
+    org.springframework.web.socket: DEBUG
+  pattern:
+    console: "%d{yyyy-MM-dd HH:mm:ss} - %msg%n"
+    file: "%d{yyyy-MM-dd HH:mm:ss} [%thread] %-5level %logger{36} - %msg%n"
+  file:
+    name: logs/communication-service.log
+    max-size: 10MB
+    max-history: 30
+
+# Application Custom Properties
+app:
+  cors:
+    allowed-origins:
+      - http://localhost:3000
+      - http://localhost:5173
+    allowed-methods: GET,POST,PUT,DELETE,PATCH,OPTIONS
+    allowed-headers: "*"
+    allow-credentials: true
+    max-age: 3600
