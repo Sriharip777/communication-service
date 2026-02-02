@@ -1,3 +1,6 @@
+# ============================================
+# SERVER CONFIGURATION
+# ============================================
 server:
   port: 8083
   compression:
@@ -7,9 +10,17 @@ server:
     include-message: always
     include-binding-errors: always
 
+# ============================================
+# SPRING BOOT CONFIGURATION
+# ============================================
 spring:
   application:
     name: communication-service
+
+  # ✅ CRITICAL FIX: Disable HttpClient Auto-Configuration
+  autoconfigure:
+    exclude:
+      - org.springframework.boot.autoconfigure.http.client.HttpClientAutoConfiguration
 
   # MongoDB Configuration
   data:
@@ -47,14 +58,16 @@ spring:
       acks: all
       retries: 3
 
-    # Topics
+    # Kafka Topics
     topics:
       video-session-events: video-session-events
       message-events: message-events
       class-events: class-events
       booking-events: booking-events
 
-# Eureka Configuration
+# ============================================
+# EUREKA SERVICE DISCOVERY
+# ============================================
 eureka:
   client:
     service-url:
@@ -67,37 +80,48 @@ eureka:
     lease-renewal-interval-in-seconds: 10
     lease-expiration-duration-in-seconds: 30
 
-# 100ms Configuration
-hundredms:
+# ============================================
+# AGORA VIDEO CONFIGURATION
+# ============================================
+agora:
   api:
-    base-url: https://api.100ms.live/v2
-    management-token: ${HUNDREDMS_MANAGEMENT_TOKEN:your-management-token}
-    app-access-key: ${HUNDREDMS_APP_ACCESS_KEY:your-app-access-key}
-    app-secret: ${HUNDREDMS_APP_SECRET:your-app-secret}
+    app-id: ${AGORA_APP_ID:bce4173e4320455fa3a46ea239deac1b}
+    app-certificate: ${AGORA_APP_CERTIFICATE:01a320a44f6a43af892b4cb56f3719a5}
   recording:
     enabled: true
     quality: 720p
     retention-days: 30
-  templates:
-    default-template-id: ${HUNDREDMS_TEMPLATE_ID:your-template-id}
+    customer-id: ${AGORA_CUSTOMER_ID:cc7d9d352e234fb6b046981462d9d73e}
+    customer-secret: ${AGORA_CUSTOMER_SECRET:005dd0ae71784bc680cb6b395fa6532d}
+  rtc:
+    channel-profile: LIVE_BROADCASTING
+    encryption-mode: aes-128-xts
+    max-idle-time: 300
 
-# WebSocket Configuration
+# ============================================
+# WEBSOCKET CONFIGURATION
+# ============================================
 websocket:
   allowed-origins:
-    - http://localhost:3000
-    - http://localhost:5173
+    - "http://localhost:3000"
+    - "http://localhost:5173"
+    - "http://localhost:8080"
   message-broker:
     prefix: /app
     destination-prefix: /topic
   endpoint: /ws
 
-# Message Configuration
+# ============================================
+# MESSAGE CONFIGURATION
+# ============================================
 message:
   retention-days: 30
   max-message-length: 2000
   typing-indicator-timeout-seconds: 5
 
-# Actuator Configuration
+# ============================================
+# ACTUATOR & MONITORING
+# ============================================
 management:
   endpoints:
     web:
@@ -111,7 +135,9 @@ management:
       prometheus:
         enabled: true
 
-# Logging Configuration
+# ============================================
+# LOGGING CONFIGURATION
+# ============================================
 logging:
   level:
     root: INFO
@@ -119,20 +145,24 @@ logging:
     org.springframework.data.mongodb: DEBUG
     org.springframework.kafka: INFO
     org.springframework.web.socket: DEBUG
+    io.agora: DEBUG
   pattern:
-    console: "%d{yyyy-MM-dd HH:mm:ss} - %msg%n"
+    console: "%d{yyyy-MM-dd HH:mm:ss} [%thread] %-5level %logger{36} - %msg%n"
     file: "%d{yyyy-MM-dd HH:mm:ss} [%thread] %-5level %logger{36} - %msg%n"
   file:
     name: logs/communication-service.log
     max-size: 10MB
     max-history: 30
 
-# Application Custom Properties
+# ============================================
+# CORS CONFIGURATION
+# ============================================
 app:
   cors:
     allowed-origins:
-      - http://localhost:3000
-      - http://localhost:5173
+      - "http://localhost:3000"
+      - "http://localhost:5173"
+      - "http://localhost:8080"
     allowed-methods: GET,POST,PUT,DELETE,PATCH,OPTIONS
     allowed-headers: "*"
     allow-credentials: true
