@@ -33,7 +33,7 @@ public class MessageService {
     private final ConversationService conversationService;
     private final MessageMapper messageMapper;
     private final MessageEventPublisher messageEventPublisher;  // ← Will inject from .event package
-
+    private final MessageAuthorizationService authorizationService;
     /**
      * Send a new message
      */
@@ -46,6 +46,17 @@ public class MessageService {
                 senderId,
                 request.getReceiverId()
         );
+
+        // ✅ AUTHORIZATION CHECK
+        if (!authorizationService.canUserMessageUser(senderId, request.getReceiverId())) {
+            throw new IllegalArgumentException(
+                    "You are not authorized to message this user. " +
+                            "Students can only message teachers of enrolled courses. " +
+                            "Teachers can message enrolled students and their parents. " +
+                            "Parents can message teachers of their children's courses."
+            );
+        }
+
 
         // Build message
         Message message = Message.builder()
