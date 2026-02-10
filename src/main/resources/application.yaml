@@ -22,6 +22,15 @@ spring:
     exclude:
       - org.springframework.boot.autoconfigure.http.client.HttpClientAutoConfiguration
 
+  jackson:
+    serialization:
+      write-dates-as-timestamps: false
+      fail-on-empty-beans: false
+    deserialization:
+      fail-on-unknown-properties: false
+    default-property-inclusion: non_null
+
+
   # MongoDB Configuration
   data:
     mongodb:
@@ -129,11 +138,9 @@ management:
         include: health,info,metrics,prometheus
   endpoint:
     health:
+      redis:
+        enabled: false
       show-details: always
-  metrics:
-    export:
-      prometheus:
-        enabled: true
 
 # ============================================
 # LOGGING CONFIGURATION

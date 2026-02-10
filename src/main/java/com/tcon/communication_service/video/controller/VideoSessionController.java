@@ -1,5 +1,6 @@
 package com.tcon.communication_service.video.controller;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.tcon.communication_service.video.dto.RoomCreateRequest;
 import com.tcon.communication_service.video.dto.RoomJoinResponse;
 import com.tcon.communication_service.video.dto.VideoSessionDto;
@@ -27,10 +28,11 @@ import java.util.List;
 @RestController
 @RequestMapping("/api/video")
 @RequiredArgsConstructor
-@CrossOrigin(origins = "*")
+//@CrossOrigin(origins = "*")
 public class VideoSessionController {
 
     private final VideoSessionService videoSessionService;
+    private final ObjectMapper objectMapper;
 
     /**
      * Create a new video session room
@@ -67,6 +69,47 @@ public class VideoSessionController {
         VideoSessionDto session = videoSessionService.endSession(sessionId, userId);
         return ResponseEntity.ok(session);
     }
+
+    /**
+     * Get session by class/booking ID
+     */
+    @GetMapping("/sessions/class/{classSessionId}")
+    public ResponseEntity<VideoSessionDto> getSessionByClassId(
+            @PathVariable String classSessionId,
+            @RequestHeader("X-User-Id") String userId) {
+
+        log.info("📥 Getting video session for class: {} by user: {}", classSessionId, userId);
+
+        try {
+            VideoSessionDto session = videoSessionService.getSessionByClassId(classSessionId);
+
+            log.info("✅ DTO created: id={}, classId={}, roomId={}",
+                    session.getId(),
+                    session.getClassSessionId(),
+                    session.getHundredMsRoomId());
+
+            // ✅ Test JSON serialization
+            try {
+                String json = objectMapper.writeValueAsString(session);
+                log.info("✅ JSON serialized successfully, length: {} bytes", json.length());
+                log.debug("📄 JSON: {}", json);
+            } catch (Exception e) {
+                log.error("❌ JSON SERIALIZATION FAILED: {}", e.getMessage(), e);
+                throw new RuntimeException("Failed to serialize session to JSON", e);
+            }
+
+            return ResponseEntity.ok(session);
+
+        } catch (IllegalArgumentException e) {
+            log.error("❌ Session not found: {}", e.getMessage());
+            return ResponseEntity.notFound().build();
+        } catch (Exception e) {
+            log.error("❌ ERROR getting session: {}", e.getMessage(), e);
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build();
+        }
+    }
+
+
 
     /**
      * Get session by ID
