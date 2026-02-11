@@ -1,5 +1,6 @@
 package com.tcon.communication_service.video.integration;
 
+import com.tcon.communication_service.video.dto.AgoraTokenResponse;
 import io.agora.media.RtcTokenBuilder;
 import io.agora.media.RtcTokenBuilder.Role;
 import lombok.extern.slf4j.Slf4j;
@@ -44,8 +45,13 @@ public class AgoraClient {
 
     /**
      * Generate RTC auth token for joining a channel
+     * Returns both token and UID for secure channel joining
      */
-    public String generateAuthToken(String channelName, String userId, String roleStr) {
+    /**
+     * Generate RTC auth token for joining a channel
+     * Returns both token and UID for secure channel joining
+     */
+    public AgoraTokenResponse generateAuthToken(String channelName, String userId, String roleStr) {
         log.info("Generating Agora token for user {} with role {} in channel {}",
                 userId, roleStr, channelName);
 
@@ -54,15 +60,17 @@ public class AgoraClient {
             Role role = determineAgoraRole(roleStr);
 
             // Token expiration time (24 hours from now)
-            int privilegeExpiredTs = (int) (System.currentTimeMillis() / 1000 + 86400);
+            int currentTimestamp = (int) (System.currentTimeMillis() / 1000);
+            int privilegeExpiredTs = currentTimestamp + 86400;
 
-            // Convert userId to integer UID (Agora supports both, but int is more efficient)
-            int uid = Math.abs(userId.hashCode());
+            // ✅ CONSISTENT UID: Always generate same UID for same user
+            // This allows seamless rejoin even after disconnection
+            int uid = generateConsistentUid(userId);
 
             log.debug("Token parameters - Channel: {}, UID: {}, Role: {}, Expiry: {}",
                     channelName, uid, role, privilegeExpiredTs);
 
-            // ✅ FIX: Create an instance of RtcTokenBuilder
+            // Create an instance of RtcTokenBuilder
             RtcTokenBuilder tokenBuilder = new RtcTokenBuilder();
 
             // Generate token using the instance method
@@ -75,17 +83,44 @@ public class AgoraClient {
                     privilegeExpiredTs
             );
 
-            log.info("Agora token generated successfully for user: {}", userId);
+            log.info("✅ Agora token generated - User: {}, UID: {}, Channel: {}",
+                    userId, uid, channelName);
             log.debug("Token (first 20 chars): {}...", token.substring(0, Math.min(20, token.length())));
 
-            return token;
+            // Return AgoraTokenResponse with token and UID
+            return AgoraTokenResponse.builder()
+                    .token(token)
+                    .uid(uid)
+                    .channelName(channelName)
+                    .expiresAt(privilegeExpiredTs * 1000L)
+                    .build();
 
         } catch (Exception e) {
-            log.error("Error generating Agora token for user {} in channel {}: {}",
+            log.error("❌ Error generating Agora token for user {} in channel {}: {}",
                     userId, channelName, e.getMessage(), e);
             throw new RuntimeException("Failed to generate Agora token", e);
         }
     }
+
+    /**
+     * Generate consistent UID for a user
+     * Same user will always get the same UID, enabling seamless rejoin
+     */
+    private int generateConsistentUid(String userId) {
+        // Use hashCode to generate consistent UID
+        int uid = Math.abs(userId.hashCode());
+
+        // Ensure UID is within valid range (positive 32-bit integer)
+        // Max UID for Agora: 2^32 - 1
+        if (uid <= 0) {
+            uid = Math.abs(uid) + 1;
+        }
+
+        log.debug("Generated consistent UID: {} for userId: {}", uid, userId);
+        return uid;
+    }
+
+
 
     /**
      * Start cloud recording

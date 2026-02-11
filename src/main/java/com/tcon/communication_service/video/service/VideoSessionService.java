@@ -1,5 +1,6 @@
 package com.tcon.communication_service.video.service;
 
+import com.tcon.communication_service.video.dto.AgoraTokenResponse;
 import com.tcon.communication_service.video.integration.AgoraClient;  // Changed import
 import com.tcon.communication_service.video.dto.RoomCreateRequest;
 import com.tcon.communication_service.video.dto.RoomJoinResponse;
@@ -17,6 +18,13 @@ import java.time.LocalDateTime;
 import java.util.List;
 import java.util.UUID;
 
+/**
+ * Video Session Service
+ * Business logic for video session management
+ *
+ * @author Senior Developer
+ * @version 1.0.0
+ */
 @Slf4j
 @Service
 @RequiredArgsConstructor
@@ -74,19 +82,28 @@ public class VideoSessionService {
         VideoSession session = videoSessionRepository.findById(sessionId)
                 .orElseThrow(() -> new IllegalArgumentException("Session not found: " + sessionId));
 
+        // Check if session can be joined
         if (!session.canJoin()) {
-            throw new IllegalStateException("Session cannot be joined at this time");
+            LocalDateTime joinWindowStart = session.getScheduledStartTime().minusMinutes(15);
+            throw new IllegalStateException(String.format(
+                    "Session cannot be joined yet. Join window opens at %s (15 minutes before class starts at %s)",
+                    joinWindowStart, session.getScheduledStartTime()
+            ));
         }
 
         // Validate user is authorized to join
         validateUserAccess(session, userId, role);
 
-        // Generate Agora auth token
-        String authToken = agoraClient.generateAuthToken(
+        // ✅ Generate Agora auth token (returns token + UID)
+        AgoraTokenResponse tokenResponse = agoraClient.generateAuthToken(
                 session.getHundredMsRoomId(),  // Channel name
                 userId,
                 role.name()
         );
+
+        log.info("✅ Agora token generated - UID: {}, Token: {}...",
+                tokenResponse.getUid(),
+                tokenResponse.getToken().substring(0, 20));
 
         // Add participant
         SessionParticipant participant = SessionParticipant.builder()
@@ -108,17 +125,21 @@ public class VideoSessionService {
 
         videoSessionRepository.save(session);
 
+        // ✅ Return response with agoraUid
         return RoomJoinResponse.builder()
                 .sessionId(session.getId())
                 .roomId(session.getHundredMsRoomId())
                 .roomName(session.getHundredMsRoomName())
-                .authToken(authToken)
+                .authToken(tokenResponse.getToken())      // ✅ Use token from response
+                .agoraUid(tokenResponse.getUid())         // ✅ Include UID for frontend
                 .peerId(userId)
                 .role(role.name())
                 .roomConfig(videoSessionMapper.toRoomConfigDto(session.getMetadata()))
-                .webrtcUrl("wss://agora-rtc.io")  // Agora WebRTC URL (client handles this)
+                .webrtcUrl("wss://agora-rtc.io")
+                .expiresAt(tokenResponse.getExpiresAt()) // ✅ Include expiration
                 .build();
     }
+
 
     @Transactional
     public VideoSessionDto endSession(String sessionId, String userId) {
@@ -160,6 +181,31 @@ public class VideoSessionService {
                 .orElseThrow(() -> new IllegalArgumentException("Session not found: " + sessionId));
         return videoSessionMapper.toDto(session);
     }
+
+    public VideoSessionDto getSessionByClassId(String classSessionId) {
+        log.info("🔍 Finding video session for class: {}", classSessionId);
+
+        VideoSession session = videoSessionRepository.findByClassSessionId(classSessionId)
+                .orElseThrow(() -> {
+                    log.error("❌ Session not found for class: {}", classSessionId);
+                    return new IllegalArgumentException("Video session not found for class: " + classSessionId);
+                });
+
+        log.info("✅ Session found: id={}, status={}, roomId={}",
+                session.getId(), session.getStatus(), session.getHundredMsRoomId());
+
+        try {
+            log.info("🔄 Converting to DTO...");
+            VideoSessionDto dto = videoSessionMapper.toDto(session);
+            log.info("✅ DTO created successfully: {}", dto.getId());
+            return dto;
+        } catch (Exception e) {
+            log.error("❌ MAPPER ERROR: {}", e.getMessage(), e);
+            throw new RuntimeException("Failed to convert session to DTO", e);
+        }
+    }
+
+
 
     public Page<VideoSessionDto> getTeacherSessions(String teacherId, Pageable pageable) {
         return videoSessionRepository.findByTeacherId(teacherId, pageable)
@@ -216,4 +262,9 @@ public class VideoSessionService {
             throw new IllegalArgumentException("User not authorized to join this session");
         }
     }
+
+    public boolean existsByClassSessionId(String classSessionId) {
+        return videoSessionRepository.existsByClassSessionId(classSessionId);
+    }
+
 }

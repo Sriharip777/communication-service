@@ -117,6 +117,11 @@ public class VideoSession {
     }
 
     public boolean canJoin() {
-        return status == SessionStatus.SCHEDULED || status == SessionStatus.IN_PROGRESS;
+        // Allow joining 15 minutes before scheduled time
+        LocalDateTime joinWindowStart = scheduledStartTime.minusMinutes(15);
+        LocalDateTime now = LocalDateTime.now();
+
+        return (status == SessionStatus.SCHEDULED || status == SessionStatus.IN_PROGRESS)
+                && now.isAfter(joinWindowStart);
     }
 }

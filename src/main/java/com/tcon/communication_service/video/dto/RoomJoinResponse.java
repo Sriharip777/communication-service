@@ -20,8 +20,10 @@ public class RoomJoinResponse {
     private String roomId;
     private String roomName;
     private String authToken;
+    private Integer agoraUid;      // ✅ ADD THIS - Agora numeric UID for token validation
     private String peerId;
     private String role;
     private RoomConfigDto roomConfig;
     private String webrtcUrl;
+    private Long expiresAt;        // ✅ ADD THIS - Token expiration timestamp (optional but useful)
 }
