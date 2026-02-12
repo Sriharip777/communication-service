@@ -22,6 +22,15 @@ spring:
     exclude:
       - org.springframework.boot.autoconfigure.http.client.HttpClientAutoConfiguration
 
+  jackson:
+    serialization:
+      write-dates-as-timestamps: false
+      fail-on-empty-beans: false
+    deserialization:
+      fail-on-unknown-properties: false
+    default-property-inclusion: non_null
+
+
   # MongoDB Configuration
   data:
     mongodb:
@@ -64,6 +73,11 @@ spring:
       message-events: message-events
       class-events: class-events
       booking-events: booking-events
+
+jwt:
+  secret: my-super-secret-jwt-key-for-educonnect-platform-minimum-256-bits-required
+  expiration: 86400000
+
 
 # ============================================
 # EUREKA SERVICE DISCOVERY
@@ -129,21 +143,21 @@ management:
         include: health,info,metrics,prometheus
   endpoint:
     health:
+      redis:
+        enabled: false
       show-details: always
-  metrics:
-    export:
-      prometheus:
-        enabled: true
 
 # ============================================
 # LOGGING CONFIGURATION
 # ============================================
-
 logging:
   level:
     root: INFO
     com.tcon.api_gateway: DEBUG
     org.springframework.cloud.gateway: INFO
+    org.springframework.web.socket: TRACE           # ✅ ADD THIS
+    reactor.netty.http.client: DEBUG                # ✅ ADD THIS
+    io.netty.handler.codec.http.websocketx: TRACE   # ✅ ADD THIS
     org.springframework.cloud.gateway.handler.RoutePredicateHandlerMapping: DEBUG
     org.springframework.cloud.loadbalancer: WARN
     io.github.resilience4j: INFO
@@ -157,7 +171,6 @@ logging:
   #   name: logs/api-gateway.log
   #   max-size: 10MB
   #   max-history: 30
-
 
 # ============================================
 # CORS CONFIGURATION
