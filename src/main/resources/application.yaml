@@ -74,6 +74,11 @@ spring:
       class-events: class-events
       booking-events: booking-events
 
+jwt:
+  secret: my-super-secret-jwt-key-for-educonnect-platform-minimum-256-bits-required
+  expiration: 86400000
+
+
 # ============================================
 # EUREKA SERVICE DISCOVERY
 # ============================================
@@ -148,18 +153,24 @@ management:
 logging:
   level:
     root: INFO
-    com.tcon.communication_service: DEBUG
-    org.springframework.data.mongodb: DEBUG
-    org.springframework.kafka: INFO
-    org.springframework.web.socket: DEBUG
-    io.agora: DEBUG
+    com.tcon.api_gateway: DEBUG
+    org.springframework.cloud.gateway: INFO
+    org.springframework.web.socket: TRACE           # ✅ ADD THIS
+    reactor.netty.http.client: DEBUG                # ✅ ADD THIS
+    io.netty.handler.codec.http.websocketx: TRACE   # ✅ ADD THIS
+    org.springframework.cloud.gateway.handler.RoutePredicateHandlerMapping: DEBUG
+    org.springframework.cloud.loadbalancer: WARN
+    io.github.resilience4j: INFO
+    reactor.netty: WARN
+    io.netty: ERROR
+    org.springframework.data.redis: INFO
   pattern:
     console: "%d{yyyy-MM-dd HH:mm:ss} [%thread] %-5level %logger{36} - %msg%n"
-    file: "%d{yyyy-MM-dd HH:mm:ss} [%thread] %-5level %logger{36} - %msg%n"
-  file:
-    name: logs/communication-service.log
-    max-size: 10MB
-    max-history: 30
+    # ✅ DISABLED: No file logging = No git conflicts!
+  # file:  # <-- COMMENTED OUT
+  #   name: logs/api-gateway.log
+  #   max-size: 10MB
+  #   max-history: 30
 
 # ============================================
 # CORS CONFIGURATION
