@@ -1,5 +1,4 @@
 package com.tcon.communication_service.config;
-
 import com.tcon.communication_service.websocket.JwtHandshakeInterceptor;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
