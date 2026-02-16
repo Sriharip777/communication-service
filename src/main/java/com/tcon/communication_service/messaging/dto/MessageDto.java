@@ -32,6 +32,7 @@ public class MessageDto {
     private Long fileSize;
     private String mimeType;
     private String replyToMessageId;
+    private LocalDateTime  deliveredAt;
     private String replyToContent;
 
     @JsonFormat(pattern = "yyyy-MM-dd'T'HH:mm:ss")

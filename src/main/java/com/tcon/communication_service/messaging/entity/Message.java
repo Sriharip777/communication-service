@@ -41,6 +41,8 @@ public class Message {
     @Indexed
     private String receiverId;
 
+    private LocalDateTime  deliveredAt;
+
     private String content;
 
     @Builder.Default

@@ -30,9 +30,8 @@ public class ConversationDto {
     private String lastMessageContent;
     private String lastMessageSenderId;
     private LocalDateTime lastMessageAt;
-
     private Map<String, Integer> unreadCounts;
-
+    private Integer unreadCount;
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
 }
