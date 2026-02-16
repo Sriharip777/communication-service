@@ -58,15 +58,17 @@ public class ConversationService {
 
     /**
      * Get user's conversations with pagination
+     * ✅ UPDATED: Pass userId to mapper for user-specific unread count
      */
     public Page<ConversationDto> getUserConversations(String userId, Pageable pageable) {
         log.info("Getting conversations for user: {}", userId);
         return conversationRepository.findByParticipantIdsContaining(userId, pageable)
-                .map(conversationMapper::toDto);
+                .map(conversation -> conversationMapper.toDto(conversation, userId));  // ✅ Pass userId
     }
 
     /**
      * Get conversation by ID
+     * ✅ UPDATED: Pass userId to mapper for user-specific unread count
      */
     public ConversationDto getConversationById(String conversationId, String userId) {
         log.info("Getting conversation {} for user {}", conversationId, userId);
@@ -79,16 +81,17 @@ public class ConversationService {
             throw new IllegalArgumentException("User is not a participant in this conversation");
         }
 
-        return conversationMapper.toDto(conversation);
+        return conversationMapper.toDto(conversation, userId);  // ✅ Pass userId
     }
 
     /**
      * Get active conversations (with messages)
+     * ✅ UPDATED: Pass userId to mapper for user-specific unread count
      */
     public Page<ConversationDto> getActiveConversations(String userId, Pageable pageable) {
         log.info("Getting active conversations for user: {}", userId);
         return conversationRepository.findActiveConversations(userId, pageable)
-                .map(conversationMapper::toDto);
+                .map(conversation -> conversationMapper.toDto(conversation, userId));  // ✅ Pass userId
     }
 
     /**
@@ -115,5 +118,46 @@ public class ConversationService {
 
         conversationRepository.delete(conversation);
         log.info("Conversation deleted: {}", conversationId);
+    }
+
+    /**
+     * ✅ NEW: Mark conversation as read for a user
+     * Called when user opens a conversation
+     */
+    @Transactional
+    public void markConversationAsRead(String conversationId, String userId) {
+        log.info("Marking conversation {} as read for user {}", conversationId, userId);
+
+        Conversation conversation = conversationRepository.findById(conversationId)
+                .orElseThrow(() -> new IllegalArgumentException("Conversation not found: " + conversationId));
+
+        // Verify user is a participant
+        if (!conversation.getParticipantIds().contains(userId)) {
+            throw new IllegalArgumentException("User is not a participant in this conversation");
+        }
+
+        // Reset unread count for this user
+        conversation.resetUnreadCount(userId);
+        conversationRepository.save(conversation);
+
+        log.info("Conversation {} marked as read for user {}", conversationId, userId);
+    }
+
+    /**
+     * ✅ NEW: Update conversation's last message
+     * Called when a new message is sent
+     */
+    @Transactional
+    public void updateLastMessage(String conversationId, String messageId, String content, String senderId) {
+        log.info("Updating last message for conversation {}", conversationId);
+
+        Conversation conversation = conversationRepository.findById(conversationId)
+                .orElseThrow(() -> new IllegalArgumentException("Conversation not found: " + conversationId));
+
+        // Update last message details
+        conversation.updateLastMessage(messageId, content, senderId);
+        conversationRepository.save(conversation);
+
+        log.info("Updated last message for conversation {}", conversationId);
     }
 }

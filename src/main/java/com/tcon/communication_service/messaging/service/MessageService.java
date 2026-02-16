@@ -3,7 +3,7 @@ package com.tcon.communication_service.messaging.service;
 import com.tcon.communication_service.messaging.dto.MessageDto;
 import com.tcon.communication_service.messaging.dto.MessageSendRequest;
 import com.tcon.communication_service.messaging.entity.*;
-import com.tcon.communication_service.messaging.event.MessageEventPublisher;  // ← Fixed import
+import com.tcon.communication_service.messaging.event.MessageEventPublisher;
 import com.tcon.communication_service.messaging.repository.ConversationRepository;
 import com.tcon.communication_service.messaging.repository.MessageRepository;
 import lombok.RequiredArgsConstructor;
@@ -32,7 +32,7 @@ public class MessageService {
     private final ConversationRepository conversationRepository;
     private final ConversationService conversationService;
     private final MessageMapper messageMapper;
-    private final MessageEventPublisher messageEventPublisher;  // ← Will inject from .event package
+    private final MessageEventPublisher messageEventPublisher;
 
     /**
      * Send a new message
@@ -73,9 +73,12 @@ public class MessageService {
 
         Message saved = messageRepository.save(message);
 
-        // Update conversation
-        conversation.updateLastMessage(saved.getId(), saved.getContent(), senderId);
-        conversationRepository.save(conversation);
+        conversationService.updateLastMessage(
+                conversation.getId(),
+                saved.getId(),
+                saved.getContent(),
+                senderId
+        );
 
         // Publish message event
         messageEventPublisher.publishMessageSent(saved);
@@ -112,12 +115,7 @@ public class MessageService {
             message.markAsRead();
             Message saved = messageRepository.save(message);
 
-            // Reset unread count in conversation
-            conversationRepository.findById(message.getConversationId())
-                    .ifPresent(conv -> {
-                        conv.resetUnreadCount(userId);
-                        conversationRepository.save(conv);
-                    });
+            conversationService.markConversationAsRead(message.getConversationId(), userId);
 
             // Publish event
             messageEventPublisher.publishMessageRead(saved);
@@ -149,12 +147,8 @@ public class MessageService {
 
         messageRepository.saveAll(unreadMessages);
 
-        // Reset unread count
-        conversationRepository.findById(conversationId)
-                .ifPresent(conv -> {
-                    conv.resetUnreadCount(userId);
-                    conversationRepository.save(conv);
-                });
+        // ✅ UPDATE: Use conversationService to reset unread count
+        conversationService.markConversationAsRead(conversationId, userId);
     }
 
     /**
@@ -177,6 +171,18 @@ public class MessageService {
 
         message.edit(newContent);
         Message saved = messageRepository.save(message);
+
+        conversationRepository.findById(message.getConversationId())
+                .ifPresent(conv -> {
+                    if (messageId.equals(conv.getLastMessageId())) {
+                        conversationService.updateLastMessage(
+                                conv.getId(),
+                                saved.getId(),
+                                saved.getContent(),
+                                saved.getSenderId()
+                        );
+                    }
+                });
 
         log.info("Message edited successfully: {}", saved.getId());
         return messageMapper.toDto(saved);
@@ -228,5 +234,32 @@ public class MessageService {
         messageRepository.deleteAll(expiredMessages);
 
         log.info("Deleted {} expired messages", expiredMessages.size());
+    }
+
+    /**
+     * Useful for displaying in conversation list
+     */
+    public MessageDto getLatestMessage(String conversationId) {
+        return messageRepository.findTopByConversationIdAndIsDeletedFalseOrderByCreatedAtDesc(conversationId)
+                .map(messageMapper::toDto)
+                .orElse(null);
+    }
+
+    /**
+     * Called when message reaches recipient's device
+     */
+    @Transactional
+    public void markAsDelivered(String messageId) {
+        messageRepository.findById(messageId)
+                .ifPresent(message -> {
+                    if (message.getStatus() == MessageStatus.SENT) {
+                        message.setStatus(MessageStatus.DELIVERED);
+                        message.setDeliveredAt(LocalDateTime.now());
+                        messageRepository.save(message);
+
+                        messageEventPublisher.publishMessageDelivered(message);
+                        log.info("Message {} marked as delivered", messageId);
+                    }
+                });
     }
 }
