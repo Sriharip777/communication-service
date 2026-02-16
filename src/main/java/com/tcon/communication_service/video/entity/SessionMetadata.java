@@ -1,5 +1,4 @@
 package com.tcon.communication_service.video.entity;
-
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
@@ -29,10 +28,15 @@ public class SessionMetadata {
 
     private String roomQuality; // 720p, 1080p
 
+    private String courseId;
+
+    private String sessionType;
+
+    private String title;
+
     private Integer maxParticipants;
 
     private String subject; // Subject being taught
 
     private String notes; // Session notes
 }
-

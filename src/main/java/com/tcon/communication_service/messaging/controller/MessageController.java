@@ -1,5 +1,6 @@
 package com.tcon.communication_service.messaging.controller;
-
+import com.tcon.communication_service.client.UserServiceClient;
+import com.tcon.communication_service.messaging.dto.ContactDto;
 import com.tcon.communication_service.messaging.dto.ConversationDto;
 import com.tcon.communication_service.messaging.dto.MessageDto;
 import com.tcon.communication_service.messaging.dto.MessageSendRequest;
@@ -15,6 +16,9 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
+import java.util.Collections;
+import java.util.List;
+
 /**
  * Message Controller
  * REST API endpoints for messaging functionality
@@ -26,12 +30,11 @@ import org.springframework.web.bind.annotation.*;
 @RestController
 @RequestMapping("/api/messages")
 @RequiredArgsConstructor
-@CrossOrigin(origins = "*")
 public class MessageController {
 
     private final MessageService messageService;
     private final ConversationService conversationService;
-
+    private final UserServiceClient userServiceClient;
     /**
      * Send a message
      * POST /api/messages
@@ -157,5 +160,23 @@ public class MessageController {
         var conversation = conversationService.getOrCreateConversation(userId, otherUserId);
         ConversationDto dto = conversationService.getConversationById(conversation.getId(), userId);
         return ResponseEntity.ok(dto);
+    }
+
+    @GetMapping("/contacts")
+    public ResponseEntity<List<ContactDto>> getMyContacts(  // ✅ This should now work
+                                                            @RequestHeader("X-User-Id") String userId,
+                                                            @RequestHeader("X-User-Role") String userRole) {
+
+        log.info("📇 Getting contacts for user: {}, role: {}", userId, userRole);
+
+        try {
+            List<ContactDto> contacts = userServiceClient.getContacts(userId, userRole);
+            log.info("✅ Found {} contacts", contacts.size());
+            return ResponseEntity.ok(contacts);
+
+        } catch (Exception e) {
+            log.error("❌ Error getting contacts: {}", e.getMessage(), e);
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(Collections.emptyList());
+        }
     }
 }

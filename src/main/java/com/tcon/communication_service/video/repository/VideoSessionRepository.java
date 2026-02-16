@@ -20,6 +20,9 @@ public interface VideoSessionRepository extends MongoRepository<VideoSession, St
 
     Optional<VideoSession> findByClassSessionId(String classSessionId);
 
+    @Query("{'metadata.courseId': ?0}")
+    List<VideoSession> findByCourseId(String courseId);
+
     Optional<VideoSession> findByHundredMsRoomId(String roomId);
 
     Page<VideoSession> findByTeacherIdAndStatus(String teacherId, SessionStatus status, Pageable pageable);
