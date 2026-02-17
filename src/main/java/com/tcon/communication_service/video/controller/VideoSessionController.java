@@ -9,8 +9,6 @@ import com.tcon.communication_service.video.service.VideoSessionService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.data.domain.Page;
-import org.springframework.data.domain.Pageable;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
@@ -28,7 +26,6 @@ import java.util.List;
 @RestController
 @RequestMapping("/api/video")
 @RequiredArgsConstructor
-//@CrossOrigin(origins = "*")
 public class VideoSessionController {
 
     private final VideoSessionService videoSessionService;
@@ -109,8 +106,6 @@ public class VideoSessionController {
         }
     }
 
-
-
     /**
      * Get session by ID
      */
@@ -121,24 +116,30 @@ public class VideoSessionController {
     }
 
     /**
-     * Get teacher sessions
+     * ✅ FIXED: Get ALL teacher sessions (no pagination limit)
      */
     @GetMapping("/sessions/teacher/{teacherId}")
-    public ResponseEntity<Page<VideoSessionDto>> getTeacherSessions(
-            @PathVariable String teacherId,
-            Pageable pageable) {
-        Page<VideoSessionDto> sessions = videoSessionService.getTeacherSessions(teacherId, pageable);
+    public ResponseEntity<List<VideoSessionDto>> getTeacherSessions(
+            @PathVariable String teacherId) {
+        log.info("📥 API: Get ALL sessions for teacher: {}", teacherId);
+
+        List<VideoSessionDto> sessions = videoSessionService.getTeacherSessions(teacherId);
+
+        log.info("✅ Returning {} total sessions for teacher {}", sessions.size(), teacherId);
         return ResponseEntity.ok(sessions);
     }
 
     /**
-     * Get student sessions
+     * ✅ FIXED: Get ALL student sessions (no pagination limit)
      */
     @GetMapping("/sessions/student/{studentId}")
-    public ResponseEntity<Page<VideoSessionDto>> getStudentSessions(
-            @PathVariable String studentId,
-            Pageable pageable) {
-        Page<VideoSessionDto> sessions = videoSessionService.getStudentSessions(studentId, pageable);
+    public ResponseEntity<List<VideoSessionDto>> getStudentSessions(
+            @PathVariable String studentId) {
+        log.info("📥 API: Get ALL sessions for student: {}", studentId);
+
+        List<VideoSessionDto> sessions = videoSessionService.getStudentSessions(studentId);
+
+        log.info("✅ Returning {} total sessions for student {}", sessions.size(), studentId);
         return ResponseEntity.ok(sessions);
     }
 

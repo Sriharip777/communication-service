@@ -1,4 +1,5 @@
 package com.tcon.communication_service.video.repository;
+
 import com.tcon.communication_service.video.entity.SessionStatus;
 import com.tcon.communication_service.video.entity.VideoSession;
 import org.springframework.data.domain.Page;
@@ -29,9 +30,13 @@ public interface VideoSessionRepository extends MongoRepository<VideoSession, St
 
     Page<VideoSession> findByStudentIdAndStatus(String studentId, SessionStatus status, Pageable pageable);
 
+    // ❌ OLD: Paginated (limited to 20 by default)
     Page<VideoSession> findByTeacherId(String teacherId, Pageable pageable);
-
     Page<VideoSession> findByStudentId(String studentId, Pageable pageable);
+
+    // ✅ NEW: Fetch ALL sessions without pagination, sorted by newest first
+    List<VideoSession> findByTeacherIdOrderByScheduledStartTimeDesc(String teacherId);
+    List<VideoSession> findByStudentIdOrderByScheduledStartTimeDesc(String studentId);
 
     List<VideoSession> findByStatusAndScheduledStartTimeBefore(SessionStatus status, LocalDateTime time);
 
@@ -58,4 +63,11 @@ public interface VideoSessionRepository extends MongoRepository<VideoSession, St
 
     @Query("{ 'status': 'IN_PROGRESS', 'actualStartTime': { $lte: ?0 } }")
     List<VideoSession> findStuckInProgressSessions(LocalDateTime threshold);
+
+    // ✅ NEW: Find active/upcoming sessions only
+    @Query("{ 'teacherId': ?0, 'status': { $in: ['SCHEDULED', 'IN_PROGRESS'] } }")
+    List<VideoSession> findActiveSessionsByTeacherId(String teacherId);
+
+    @Query("{ 'studentId': ?0, 'status': { $in: ['SCHEDULED', 'IN_PROGRESS'] } }")
+    List<VideoSession> findActiveSessionsByStudentId(String studentId);
 }

@@ -1,7 +1,7 @@
 package com.tcon.communication_service.video.service;
 
 import com.tcon.communication_service.video.dto.AgoraTokenResponse;
-import com.tcon.communication_service.video.integration.AgoraClient;  // Changed import
+import com.tcon.communication_service.video.integration.AgoraClient;
 import com.tcon.communication_service.video.dto.RoomCreateRequest;
 import com.tcon.communication_service.video.dto.RoomJoinResponse;
 import com.tcon.communication_service.video.dto.VideoSessionDto;
@@ -9,8 +9,6 @@ import com.tcon.communication_service.video.entity.*;
 import com.tcon.communication_service.video.repository.VideoSessionRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.data.domain.Page;
-import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -31,7 +29,7 @@ import java.util.UUID;
 public class VideoSessionService {
 
     private final VideoSessionRepository videoSessionRepository;
-    private final AgoraClient agoraClient;  // Changed from HundredMsClient
+    private final AgoraClient agoraClient;
     private final VideoSessionMapper videoSessionMapper;
 
     @Transactional
@@ -53,8 +51,8 @@ public class VideoSessionService {
                 .teacherId(request.getTeacherId())
                 .studentId(request.getStudentId())
                 .parentId(request.getParentId())
-                .hundredMsRoomId(channelName)  // Store Agora channel name
-                .hundredMsRoomName(roomName)   // Store original room name
+                .hundredMsRoomId(channelName)
+                .hundredMsRoomName(roomName)
                 .status(SessionStatus.SCHEDULED)
                 .scheduledStartTime(request.getScheduledStartTime())
                 .durationMinutes(request.getDurationMinutes())
@@ -94,9 +92,37 @@ public class VideoSessionService {
         // Validate user is authorized to join
         validateUserAccess(session, userId, role);
 
-        // ✅ Generate Agora auth token (returns token + UID)
+        // ✅ NEW: Check if user already joined (prevent duplicates)
+        boolean alreadyJoined = session.getParticipants().stream()
+                .anyMatch(p -> p.getUserId().equals(userId) && p.getLeftAt() == null);
+
+        if (alreadyJoined) {
+            log.warn("⚠️ User {} already joined session {}, returning existing token", userId, sessionId);
+
+            // Generate fresh token for existing participant
+            AgoraTokenResponse tokenResponse = agoraClient.generateAuthToken(
+                    session.getHundredMsRoomId(),
+                    userId,
+                    role.name()
+            );
+
+            return RoomJoinResponse.builder()
+                    .sessionId(session.getId())
+                    .roomId(session.getHundredMsRoomId())
+                    .roomName(session.getHundredMsRoomName())
+                    .authToken(tokenResponse.getToken())
+                    .agoraUid(tokenResponse.getUid())
+                    .peerId(userId)
+                    .role(role.name())
+                    .roomConfig(videoSessionMapper.toRoomConfigDto(session.getMetadata()))
+                    .webrtcUrl("wss://agora-rtc.io")
+                    .expiresAt(tokenResponse.getExpiresAt())
+                    .build();
+        }
+
+        // Generate Agora auth token
         AgoraTokenResponse tokenResponse = agoraClient.generateAuthToken(
-                session.getHundredMsRoomId(),  // Channel name
+                session.getHundredMsRoomId(),
                 userId,
                 role.name()
         );
@@ -105,11 +131,11 @@ public class VideoSessionService {
                 tokenResponse.getUid(),
                 tokenResponse.getToken().substring(0, 20));
 
-        // Add participant
+        // Add participant (only if not already joined)
         SessionParticipant participant = SessionParticipant.builder()
                 .userId(userId)
                 .role(role)
-                .hundredMsPeerId(userId)  // Agora uses userId as peer ID
+                .hundredMsPeerId(userId)
                 .joinedAt(LocalDateTime.now())
                 .isCameraEnabled(role != ParticipantRole.PARENT_OBSERVER)
                 .isMicEnabled(role != ParticipantRole.PARENT_OBSERVER)
@@ -125,18 +151,17 @@ public class VideoSessionService {
 
         videoSessionRepository.save(session);
 
-        // ✅ Return response with agoraUid
         return RoomJoinResponse.builder()
                 .sessionId(session.getId())
                 .roomId(session.getHundredMsRoomId())
                 .roomName(session.getHundredMsRoomName())
-                .authToken(tokenResponse.getToken())      // ✅ Use token from response
-                .agoraUid(tokenResponse.getUid())         // ✅ Include UID for frontend
+                .authToken(tokenResponse.getToken())
+                .agoraUid(tokenResponse.getUid())
                 .peerId(userId)
                 .role(role.name())
                 .roomConfig(videoSessionMapper.toRoomConfigDto(session.getMetadata()))
                 .webrtcUrl("wss://agora-rtc.io")
-                .expiresAt(tokenResponse.getExpiresAt()) // ✅ Include expiration
+                .expiresAt(tokenResponse.getExpiresAt())
                 .build();
     }
 
@@ -205,16 +230,32 @@ public class VideoSessionService {
         }
     }
 
+    // ✅ FIXED: Return all sessions without pagination
+    public List<VideoSessionDto> getTeacherSessions(String teacherId) {
+        log.info("📋 Fetching ALL sessions for teacher: {}", teacherId);
 
+        List<VideoSession> sessions = videoSessionRepository
+                .findByTeacherIdOrderByScheduledStartTimeDesc(teacherId);
 
-    public Page<VideoSessionDto> getTeacherSessions(String teacherId, Pageable pageable) {
-        return videoSessionRepository.findByTeacherId(teacherId, pageable)
-                .map(videoSessionMapper::toDto);
+        log.info("✅ Found {} total sessions for teacher {}", sessions.size(), teacherId);
+
+        return sessions.stream()
+                .map(videoSessionMapper::toDto)
+                .toList();
     }
 
-    public Page<VideoSessionDto> getStudentSessions(String studentId, Pageable pageable) {
-        return videoSessionRepository.findByStudentId(studentId, pageable)
-                .map(videoSessionMapper::toDto);
+    // ✅ FIXED: Return all sessions without pagination
+    public List<VideoSessionDto> getStudentSessions(String studentId) {
+        log.info("📋 Fetching ALL sessions for student: {}", studentId);
+
+        List<VideoSession> sessions = videoSessionRepository
+                .findByStudentIdOrderByScheduledStartTimeDesc(studentId);
+
+        log.info("✅ Found {} total sessions for student {}", sessions.size(), studentId);
+
+        return sessions.stream()
+                .map(videoSessionMapper::toDto)
+                .toList();
     }
 
     public List<VideoSessionDto> getActiveSessions() {
@@ -266,5 +307,4 @@ public class VideoSessionService {
     public boolean existsByClassSessionId(String classSessionId) {
         return videoSessionRepository.existsByClassSessionId(classSessionId);
     }
-
 }

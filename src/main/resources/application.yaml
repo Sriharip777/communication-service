@@ -114,7 +114,13 @@ agora:
     channel-profile: LIVE_BROADCASTING
     encryption-mode: aes-128-xts
     max-idle-time: 300
-
+  whiteboard:
+    app-id: ${AGORA_WHITEBOARD_APP_ID:AAQ_oAsAEfGndCngw3I-_g/W5s-yMbnbMIfEA}
+    access-key: ${AGORA_WHITEBOARD_AK:q2pLswuo0VCFEtSi}
+    secret-key: ${AGORA_WHITEBOARD_SK:LTERpGhTCaWvXejMuBVpaWRlCBdHfvPM}
+    api-base-url: https://api.netless.link/v5
+    region: sg  # Options: cn-hz, us-sv, sg, in-mum, gb-lon
+    token-expiry-hours: 24
 # ============================================
 # WEBSOCKET CONFIGURATION
 # ============================================
