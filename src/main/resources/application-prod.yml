@@ -1,39 +1,153 @@
 server:
-  port: 8084
+  port: ${PORT:8084}
+  compression:
+    enabled: true
+    mime-types: application/json,application/xml,text/html,text/xml,text/plain
+  error:
+    include-message: always
+    include-binding-errors: always
 
 spring:
+  application:
+    name: communication-service
+
+  autoconfigure:
+    exclude:
+      - org.springframework.boot.autoconfigure.http.client.HttpClientAutoConfiguration
+      - de.flapdoodle.embed.mongo.spring.autoconfigure.EmbeddedMongoAutoConfiguration
+
+  jackson:
+    serialization:
+      write-dates-as-timestamps: false
+      fail-on-empty-beans: false
+    deserialization:
+      fail-on-unknown-properties: false
+    default-property-inclusion: non_null
+
+  # Embedded Mongo only for local/tests; disable via profile in prod if needed
+  mongodb:
+    embedded:
+      version: 6.0.5
+
   data:
     mongodb:
-      uri: ${MONGODB_URI}
+      uri: ${SPRING_DATA_MONGODB_URI}
+      database: ${SPRING_DATA_MONGODB_DATABASE:learning_management}
+      auto-index-creation: true
+      uuid-representation: standard
+
     redis:
-      host: ${REDIS_HOST}
-      port: ${REDIS_PORT}
-      password: ${REDIS_PASSWORD}
+      host: ${SPRING_DATA_REDIS_HOST}
+      port: ${SPRING_DATA_REDIS_PORT:6379}
+      timeout: 6000ms
+      lettuce:
+        pool:
+          max-active: 8
+          max-idle: 8
+          min-idle: 2
+          max-wait: -1ms
 
   kafka:
-    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS}
+    bootstrap-servers: ${SPRING_KAFKA_BOOTSTRAPSERVERS}
+    consumer:
+      group-id: ${SPRING_KAFKA_CONSUMER_GROUPID:communication-service-group}
+      auto-offset-reset: earliest
+      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      value-deserializer: org.springframework.kafka.support.serializer.JsonDeserializer
+      properties:
+        spring.json.trusted.packages: "*"
+    producer:
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.springframework.kafka.support.serializer.JsonSerializer
+      acks: all
+      retries: 3
+    topics:
+      video-session-events: ${SPRING_KAFKA_TOPICS_VIDEOSESSIONEVENTS:video-session-events}
+      message-events: ${SPRING_KAFKA_TOPICS_MESSAGEEVENTS:message-events}
+      class-events: ${SPRING_KAFKA_TOPICS_CLASSEVENTS:class-events}
+      booking-events: ${SPRING_KAFKA_TOPICS_BOOKINGEVENTS:booking-events}
+
+jwt:
+  secret: ${JWT_SECRET}
+  expiration: ${JWT_EXPIRATION:86400000}
 
 eureka:
   client:
     service-url:
-      defaultZone: ${EUREKA_SERVER_URL}
+      defaultZone: ${EUREKA_CLIENT_SERVICEURL_DEFAULTZONE}
+    fetch-registry: ${EUREKA_CLIENT_FETCHREGISTRY:true}
+    register-with-eureka: ${EUREKA_CLIENT_REGISTERWITHEUREKA:true}
+  instance:
+    prefer-ip-address: true
+    instance-id: ${spring.application.name}:${spring.application.instance_id:${random.value}}
+    lease-renewal-interval-in-seconds: ${EUREKA_INSTANCE_LEASERENEWALINTERVALINSECONDS:10}
+    lease-expiration-duration-in-seconds: ${EUREKA_INSTANCE_LEASEEXPIRATIONDURATIONINSECONDS:30}
 
-hundredms:
+agora:
   api:
-    management-token: ${HUNDREDMS_MANAGEMENT_TOKEN}
-    app-access-key: ${HUNDREDMS_APP_ACCESS_KEY}
-    app-secret: ${HUNDREDMS_APP_SECRET}
-    base-url: https://api.100ms.live/v2
-  templates:
-    default-template-id: ${HUNDREDMS_TEMPLATE_ID}
+    app-id: ${AGORA_APP_ID}
+    app-certificate: ${AGORA_APP_CERTIFICATE}
+  recording:
+    enabled: true
+    quality: 720p
+    retention-days: 30
+    customer-id: ${AGORA_CUSTOMER_ID}
+    customer-secret: ${AGORA_CUSTOMER_SECRET}
+  rtc:
+    channel-profile: LIVE_BROADCASTING
+    encryption-mode: aes-128-xts
+    max-idle-time: 300
+
+websocket:
+  allowed-origins:
+    - ${WEBSOCKET_ALLOWED_ORIGIN_1:http://localhost:3000}
+    - ${WEBSOCKET_ALLOWED_ORIGIN_2:http://localhost:5173}
+    - ${WEBSOCKET_ALLOWED_ORIGIN_3:http://localhost:8080}
+  message-broker:
+    prefix: /app
+    destination-prefix: /topic
+  endpoint: /ws
+
+message:
+  retention-days: 30
+  max-message-length: 2000
+  typing-indicator-timeout-seconds: 5
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics,prometheus
+  endpoint:
+    health:
+      redis:
+        enabled: false
+      show-details: always
 
 logging:
   level:
-    root: WARN
-    com.ton.communication: INFO
-  file:
-    name: /var/log/communication-service/application.log
+    root: INFO
+    com.tcon.api_gateway: DEBUG
+    org.springframework.cloud.gateway: INFO
+    org.springframework.web.socket: TRACE
+    reactor.netty.http.client: DEBUG
+    io.netty.handler.codec.http.websocketx: TRACE
+    org.springframework.cloud.gateway.handler.RoutePredicateHandlerMapping: DEBUG
+    org.springframework.cloud.loadbalancer: WARN
+    io.github.resilience4j: INFO
+    reactor.netty: WARN
+    io.netty: ERROR
+    org.springframework.data.redis: INFO
+  pattern:
+    console: "%d{yyyy-MM-dd HH:mm:ss} [%thread] %-5level %logger{36} - %msg%n"
 
 app:
   cors:
-    allowed-origins: ${ALLOWED_ORIGINS}
+    allowed-origins:
+      - ${CORS_ALLOWED_ORIGIN_1:http://localhost:3000}
+      - ${CORS_ALLOWED_ORIGIN_2:http://localhost:5173}
+      - ${CORS_ALLOWED_ORIGIN_3:http://localhost:8080}
+    allowed-methods: GET,POST,PUT,DELETE,PATCH,OPTIONS
+    allowed-headers: "*"
+    allow-credentials: true
+    max-age: 3600
