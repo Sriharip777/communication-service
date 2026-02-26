@@ -9,7 +9,7 @@ server:
 
 spring:
   application:
-    name: communication-service
+    name: COMMUNICATION-SERVICE
 
   autoconfigure:
     exclude:
@@ -24,18 +24,12 @@ spring:
       fail-on-unknown-properties: false
     default-property-inclusion: non_null
 
-  # Embedded Mongo only for local/tests; disable via profile in prod if needed
-  mongodb:
-    embedded:
-      version: 6.0.5
-
   data:
     mongodb:
       uri: ${SPRING_DATA_MONGODB_URI}
       database: ${SPRING_DATA_MONGODB_DATABASE:learning_management}
       auto-index-creation: true
       uuid-representation: standard
-
     redis:
       host: ${SPRING_DATA_REDIS_HOST}
       port: ${SPRING_DATA_REDIS_PORT:6379}
@@ -73,15 +67,24 @@ jwt:
 
 eureka:
   client:
+    enabled: ${EUREKA_ENABLED:true}
+    register-with-eureka: true
+    fetch-registry: true
     service-url:
-      defaultZone: ${EUREKA_CLIENT_SERVICEURL_DEFAULTZONE}
-    fetch-registry: ${EUREKA_CLIENT_FETCHREGISTRY:true}
-    register-with-eureka: ${EUREKA_CLIENT_REGISTERWITHEUREKA:true}
+      defaultZone: ${EUREKA_URL:https://educonservicediscovery-64307221061.asia-south1.run.app/eureka/}
+    registry-fetch-interval-seconds: 15
   instance:
-    prefer-ip-address: true
-    instance-id: ${spring.application.name}:${spring.application.instance_id:${random.value}}
-    lease-renewal-interval-in-seconds: ${EUREKA_INSTANCE_LEASERENEWALINTERVALINSECONDS:10}
-    lease-expiration-duration-in-seconds: ${EUREKA_INSTANCE_LEASEEXPIRATIONDURATIONINSECONDS:30}
+    hostname: ${EUREKA_INSTANCE_HOSTNAME:localhost}
+    prefer-ip-address: false
+    instance-id: ${EUREKA_INSTANCE_HOSTNAME:localhost}:${server.port}
+    lease-renewal-interval-in-seconds: 10
+    lease-expiration-duration-in-seconds: 30
+    non-secure-port-enabled: false
+    secure-port-enabled: true
+    secure-port: 443
+    home-page-url: https://${eureka.instance.hostname}/
+    status-page-url: https://${eureka.instance.hostname}/actuator/info
+    health-check-url: https://${eureka.instance.hostname}/actuator/health
 
 agora:
   api:
@@ -128,11 +131,9 @@ logging:
   level:
     root: INFO
     com.tcon.api_gateway: DEBUG
-    org.springframework.cloud.gateway: INFO
     org.springframework.web.socket: TRACE
     reactor.netty.http.client: DEBUG
     io.netty.handler.codec.http.websocketx: TRACE
-    org.springframework.cloud.gateway.handler.RoutePredicateHandlerMapping: DEBUG
     org.springframework.cloud.loadbalancer: WARN
     io.github.resilience4j: INFO
     reactor.netty: WARN
@@ -140,14 +141,3 @@ logging:
     org.springframework.data.redis: INFO
   pattern:
     console: "%d{yyyy-MM-dd HH:mm:ss} [%thread] %-5level %logger{36} - %msg%n"
-
-app:
-  cors:
-    allowed-origins:
-      - ${CORS_ALLOWED_ORIGIN_1:http://localhost:3000}
-      - ${CORS_ALLOWED_ORIGIN_2:http://localhost:5173}
-      - ${CORS_ALLOWED_ORIGIN_3:http://localhost:8080}
-    allowed-methods: GET,POST,PUT,DELETE,PATCH,OPTIONS
-    allowed-headers: "*"
-    allow-credentials: true
-    max-age: 3600
