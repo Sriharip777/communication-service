@@ -1,5 +1,7 @@
 package com.tcon.communication_service.messaging.controller;
+
 import com.tcon.communication_service.client.UserServiceClient;
+import com.tcon.communication_service.client.ParentServiceClient;
 import com.tcon.communication_service.messaging.dto.ContactDto;
 import com.tcon.communication_service.messaging.dto.ConversationDto;
 import com.tcon.communication_service.messaging.dto.MessageDto;
@@ -19,13 +21,13 @@ import org.springframework.web.bind.annotation.*;
 import java.util.Collections;
 import java.util.List;
 
-/**
- * Message Controller
- * REST API endpoints for messaging functionality
- *
- * @author Senior Developer
- * @version 1.0.0
- */
+// ✅ CUSTOM EXCEPTION (no Spring Security needed)
+class ParentAccessDeniedException extends RuntimeException {
+    public ParentAccessDeniedException(String message) {
+        super(message);
+    }
+}
+
 @Slf4j
 @RestController
 @RequestMapping("/api/messages")
@@ -35,145 +37,306 @@ public class MessageController {
     private final MessageService messageService;
     private final ConversationService conversationService;
     private final UserServiceClient userServiceClient;
+    private final ParentServiceClient parentServiceClient;
+
     /**
-     * Send a message
+     * ✅ Send message with role validation (blocks parents)
+     * POST /api/messages
+     */
+    /**
+     * ✅ FIXED: Now matches service signature perfectly
      * POST /api/messages
      */
     @PostMapping
     public ResponseEntity<MessageDto> sendMessage(
-            @RequestHeader("X-User-Id") String senderId,  // ← Get senderId from header
+            @RequestHeader("X-User-Id") String senderId,
+            @RequestHeader("X-User-Role") String senderRole,
             @Valid @RequestBody MessageSendRequest request) {
-        log.info("Sending message from {} to {}", senderId, request.getReceiverId());
-        MessageDto message = messageService.sendMessage(senderId, request);  // ← Fixed signature
-        return ResponseEntity.status(HttpStatus.CREATED).body(message);
+
+        log.info("📤 Sending message from {} ({}) to {}", senderId, senderRole, request.getReceiverId());
+
+        try {
+            // ✅ PERFECT MATCH: 3 params → service handles parent validation
+            MessageDto message = messageService.sendMessage(senderId, senderRole, request);
+            log.info("✅ Message sent: {}", message.getId());
+            return ResponseEntity.status(HttpStatus.CREATED).body(message);
+        } catch (ParentAccessDeniedException e) {
+            log.warn("🚫 Send blocked: {}", e.getMessage());
+            return ResponseEntity.status(HttpStatus.FORBIDDEN).body(null);
+        }
     }
 
     /**
-     * Get messages in a conversation
+     * ✅ Get messages with parent validation
      * GET /api/messages/conversations/{conversationId}
      */
     @GetMapping("/conversations/{conversationId}")
     public ResponseEntity<Page<MessageDto>> getMessages(
             @PathVariable String conversationId,
+            @RequestHeader("X-User-Id") String userId,
+            @RequestHeader("X-User-Role") String userRole,
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "50") int size) {
-        Pageable pageable = PageRequest.of(page, size);
-        Page<MessageDto> messages = messageService.getConversationMessages(conversationId, pageable);  // ← Fixed method name
-        return ResponseEntity.ok(messages);
+
+        log.debug("📖 Loading messages for {} ({}) - conv: {}", userId, userRole, conversationId);
+
+        try {
+            if ("PARENT".equals(userRole)) {
+                messageService.validateParentAccess(userId, conversationId);
+            }
+
+            Pageable pageable = PageRequest.of(page, size);
+            Page<MessageDto> messages = messageService.getConversationMessages(conversationId, pageable);
+            log.debug("✅ Loaded {} messages", messages.getTotalElements());
+            return ResponseEntity.ok(messages);
+
+        } catch (ParentAccessDeniedException e) {
+            log.warn("🚫 Parent access denied: {} -> {}", userId, conversationId);
+            return ResponseEntity.status(HttpStatus.FORBIDDEN).body(null);
+        }
     }
 
     /**
-     * Mark message as read
+     * ✅ Mark message as read (blocks parents)
      * PUT /api/messages/{messageId}/read
      */
     @PutMapping("/{messageId}/read")
     public ResponseEntity<MessageDto> markAsRead(
             @PathVariable String messageId,
-            @RequestHeader("X-User-Id") String userId) {  // ← Changed to header
-        MessageDto message = messageService.markAsRead(messageId, userId);  // ← Returns MessageDto
-        return ResponseEntity.ok(message);
+            @RequestHeader("X-User-Id") String userId,
+            @RequestHeader("X-User-Role") String userRole) {
+
+        log.debug("📖 Marking read: {} ({}) -> {}", messageId, userId, userRole);
+
+        try {
+            if ("PARENT".equals(userRole)) {
+                throw new ParentAccessDeniedException("Parents cannot mark messages as read");
+            }
+            MessageDto message = messageService.markAsRead(messageId, userId, userRole);
+            return ResponseEntity.ok(message);
+        } catch (ParentAccessDeniedException e) {
+            log.warn("🚫 Mark read blocked: {}", e.getMessage());
+            return ResponseEntity.status(HttpStatus.FORBIDDEN).body(null);
+        }
     }
 
     /**
-     * Mark all messages in conversation as read
+     * ✅ Mark conversation as read (blocks parents)
      * PUT /api/messages/conversations/{conversationId}/read
      */
     @PutMapping("/conversations/{conversationId}/read")
     public ResponseEntity<Void> markConversationAsRead(
             @PathVariable String conversationId,
-            @RequestHeader("X-User-Id") String userId) {  // ← Changed to header
-        messageService.markConversationAsRead(conversationId, userId);  // ← Fixed method name
-        return ResponseEntity.ok().build();
+            @RequestHeader("X-User-Id") String userId,
+            @RequestHeader("X-User-Role") String userRole) {
+
+        log.debug("📖 Marking conversation read: {} ({})", conversationId, userId);
+
+        try {
+            if ("PARENT".equals(userRole)) {
+                throw new ParentAccessDeniedException("Parents cannot mark conversations as read");
+            }
+            messageService.markConversationAsRead(conversationId, userId, userRole);
+            return ResponseEntity.ok().build();
+        } catch (ParentAccessDeniedException e)  {
+            log.warn("🚫 Mark conv read blocked: {}", e.getMessage());
+            return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
+        }
     }
 
     /**
-     * Edit a message
+     * ✅ Edit message (blocks parents)
      * PUT /api/messages/{messageId}
      */
     @PutMapping("/{messageId}")
     public ResponseEntity<MessageDto> editMessage(
             @PathVariable String messageId,
             @RequestHeader("X-User-Id") String userId,
+            @RequestHeader("X-User-Role") String userRole,
             @RequestParam String content) {
-        MessageDto message = messageService.editMessage(messageId, userId, content);
-        return ResponseEntity.ok(message);
+
+        log.debug("✏️ Editing message: {} ({})", messageId, userId);
+
+        try {
+            if ("PARENT".equals(userRole)) {
+                throw new ParentAccessDeniedException("Parents cannot edit messages");
+            }
+            MessageDto message = messageService.editMessage(messageId, userId, userRole, content);
+            return ResponseEntity.ok(message);
+        } catch (ParentAccessDeniedException e) {
+            log.warn("🚫 Edit blocked: {}", e.getMessage());
+            return ResponseEntity.status(HttpStatus.FORBIDDEN).body(null);
+        }
     }
 
     /**
-     * Delete a message
+     * ✅ Delete message (blocks parents)
      * DELETE /api/messages/{messageId}
      */
     @DeleteMapping("/{messageId}")
     public ResponseEntity<Void> deleteMessage(
             @PathVariable String messageId,
-            @RequestHeader("X-User-Id") String userId) {
-        messageService.deleteMessage(messageId, userId);
-        return ResponseEntity.noContent().build();
+            @RequestHeader("X-User-Id") String userId,
+            @RequestHeader("X-User-Role") String userRole) {
+
+        log.debug("🗑️ Deleting message: {} ({})", messageId, userId);
+
+        try {
+            if ("PARENT".equals(userRole)) {
+                throw new ParentAccessDeniedException("Parents cannot delete messages");
+            }
+            messageService.deleteMessage(messageId, userId, userRole);
+            return ResponseEntity.noContent().build();
+        } catch (ParentAccessDeniedException e) {
+            log.warn("🚫 Delete blocked: {}", e.getMessage());
+            return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
+        }
     }
 
-
-
     /**
-     * Get unread count for a conversation
+     * ✅ Get unread count (parents get 0)
      * GET /api/messages/conversations/{conversationId}/unread-count
      */
     @GetMapping("/conversations/{conversationId}/unread-count")
     public ResponseEntity<Long> getUnreadCount(
             @PathVariable String conversationId,
-            @RequestHeader("X-User-Id") String userId) {  // ← Changed to header
-        Long count = messageService.getUnreadCount(conversationId, userId);
+            @RequestHeader("X-User-Id") String userId,
+            @RequestHeader("X-User-Role") String userRole) {
+
+        log.debug("🔢 Unread count: {} ({}) -> {}", conversationId, userId, userRole);
+        Long count = messageService.getUnreadCount(conversationId, userId, userRole);
         return ResponseEntity.ok(count);
     }
 
     /**
-     * Get user conversations
+     * ✅ Get conversations with parent child support
      * GET /api/messages/conversations
      */
+    // MessageController
     @GetMapping("/conversations")
     public ResponseEntity<Page<ConversationDto>> getUserConversations(
             @RequestHeader("X-User-Id") String userId,
+            @RequestHeader("X-User-Role") String userRole,
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "20") int size) {
+
+        log.info("📋 Loading conversations for {} ({})", userId, userRole);
+
         Pageable pageable = PageRequest.of(page, size);
-        Page<ConversationDto> conversations = conversationService.getUserConversations(userId, pageable);  // ← Fixed signature
+
+        try {
+            if ("PARENT".equals(userRole)) {
+                List<String> childIds = parentServiceClient.getChildStudentIds(userId);
+                log.info("👨‍👩‍👧 Parent {} has children from Feign: {}", userId, childIds);
+
+                if (childIds == null || childIds.isEmpty()) {
+                    log.info("No child IDs found, returning empty conversations for parent {}", userId);
+                    return ResponseEntity.ok(Page.empty(pageable));
+                }
+
+                Page<ConversationDto> convos = conversationService.getChildConversations(childIds, pageable);
+                log.info("✅ Found {} conversations for children {}", convos.getTotalElements(), childIds);
+                return ResponseEntity.ok(convos);
+            }
+
+            Page<ConversationDto> conversations = conversationService.getUserConversations(userId, pageable);
+            return ResponseEntity.ok(conversations);
+
+        } catch (Exception e) {
+            log.error("❌ Error loading conversations for {}: {}", userId, e.getMessage(), e);
+            if ("PARENT".equals(userRole)) {
+                log.warn("Returning empty conversations for parent {}", userId);
+                return ResponseEntity.ok(Page.empty(pageable));
+            }
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(Page.empty(pageable));
+        }
+    }
+
+    // inside MessageController
+
+    /**
+     * Get teachers this parent can message
+     * GET /api/messages/parent/teachers
+     */
+
+    // in MessageController
+
+    @GetMapping("/conversations/parent-direct")
+    public ResponseEntity<Page<ConversationDto>> getMyParentConversations(
+            @RequestHeader("X-User-Id") String userId,
+            @RequestHeader("X-User-Role") String userRole,
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "20") int size) {
+
+        if (!"PARENT".equals(userRole)) {
+            return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
+        }
+
+        Pageable pageable = PageRequest.of(page, size);
+        Page<ConversationDto> conversations =
+                conversationService.getUserConversations(userId, pageable); // parent as participant
+
         return ResponseEntity.ok(conversations);
     }
 
+
+
     /**
-     * Get conversation by ID
+     * Get conversation details (with parent validation)
      * GET /api/messages/conversations/{conversationId}/details
      */
     @GetMapping("/conversations/{conversationId}/details")
     public ResponseEntity<ConversationDto> getConversation(
             @PathVariable String conversationId,
-            @RequestHeader("X-User-Id") String userId) {  // ← Added userId for validation
-        ConversationDto conversation = conversationService.getConversationById(conversationId, userId);  // ← Fixed method name
-        return ResponseEntity.ok(conversation);
+            @RequestHeader("X-User-Id") String userId,
+            @RequestHeader("X-User-Role") String userRole) {
+
+        log.debug("ℹ️ Conversation details: {} ({}) -> {}", conversationId, userId, userRole);
+
+        try {
+            if ("PARENT".equals(userRole)) {
+                messageService.validateParentAccess(userId, conversationId);
+            }
+
+            ConversationDto conversation = conversationService.getConversationById(conversationId, userId);
+            return ResponseEntity.ok(conversation);
+        } catch (RuntimeException e) {
+            log.warn("🚫 Conversation details denied: {}", e.getMessage());
+            return ResponseEntity.status(HttpStatus.FORBIDDEN).body(null);
+        }
     }
 
     /**
-     * Get conversation between two users (or create if not exists)
+     * Get or create conversation (blocks parents from creating)
      * GET /api/messages/conversations/with/{otherUserId}
      */
     @GetMapping("/conversations/with/{otherUserId}")
     public ResponseEntity<ConversationDto> getOrCreateConversation(
             @RequestHeader("X-User-Id") String userId,
+            @RequestHeader("X-User-Role") String userRole,
             @PathVariable String otherUserId) {
+
+        log.debug("🔗 Conversation: {} ({}) <-> {}", userId, userRole, otherUserId);
+
         var conversation = conversationService.getOrCreateConversation(userId, otherUserId);
         ConversationDto dto = conversationService.getConversationById(conversation.getId(), userId);
         return ResponseEntity.ok(dto);
     }
 
+
+    /**
+     * Get contacts (works for all roles)
+     */
     @GetMapping("/contacts")
-    public ResponseEntity<List<ContactDto>> getMyContacts(  // ✅ This should now work
-                                                            @RequestHeader("X-User-Id") String userId,
-                                                            @RequestHeader("X-User-Role") String userRole) {
+    public ResponseEntity<List<ContactDto>> getMyContacts(
+            @RequestHeader("X-User-Id") String userId,
+            @RequestHeader("X-User-Role") String userRole) {
 
         log.info("📇 Getting contacts for user: {}, role: {}", userId, userRole);
 
         try {
             List<ContactDto> contacts = userServiceClient.getContacts(userId, userRole);
-            log.info("✅ Found {} contacts", contacts.size());
+            log.info("✅ Found {} contacts for {}", contacts.size(), userRole);
             return ResponseEntity.ok(contacts);
 
         } catch (Exception e) {

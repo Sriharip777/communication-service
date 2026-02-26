@@ -35,6 +35,7 @@ public class MessageDto {
     private LocalDateTime  deliveredAt;
     private String replyToContent;
 
+
     @JsonFormat(pattern = "yyyy-MM-dd'T'HH:mm:ss")
     private LocalDateTime readAt;
 

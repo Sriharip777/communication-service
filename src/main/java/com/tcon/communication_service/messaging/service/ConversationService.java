@@ -30,20 +30,33 @@ public class ConversationService {
     private final ConversationMapper conversationMapper;
 
     /**
-     * Get or create conversation between two users
+     * Get or create conversation between two users.
+     * For parents, creates/uses PARENT_DIRECT.
+     * For students/teachers, creates/uses DIRECT.
      */
     @Transactional
-    public Conversation getOrCreateConversation(String userId1, String userId2) {
-        log.info("Getting or creating conversation between {} and {}", userId1, userId2);
+    public Conversation getOrCreateConversation(String currentUserId, String otherUserId) {
+        log.info("Getting or creating conversation between {} and {}", currentUserId, otherUserId);
 
-        // Sort IDs for consistent querying
+        String role = getUserRole(currentUserId); // "PARENT", "STUDENT", "TEACHER"
+
+        if ("PARENT".equals(role)) {
+            return getOrCreateParentDirectConversation(currentUserId, otherUserId);
+        } else {
+            return getOrCreateChildConversation(currentUserId, otherUserId);
+        }
+    }
+
+    // ----------------- internal helpers -----------------
+
+    // existing behaviour for student/teacher chats
+    private Conversation getOrCreateChildConversation(String userId1, String userId2) {
         List<String> participantIds = Arrays.asList(userId1, userId2);
         participantIds.sort(String::compareTo);
 
-        // Try to find existing conversation
-        return conversationRepository.findByParticipantIds(participantIds)
+        return conversationRepository
+                .findByParticipantIdsAndType(participantIds, "DIRECT")
                 .orElseGet(() -> {
-                    // Create new conversation
                     Conversation conversation = Conversation.builder()
                             .participantIds(participantIds)
                             .type("DIRECT")
@@ -51,24 +64,53 @@ public class ConversationService {
                             .build();
 
                     Conversation saved = conversationRepository.save(conversation);
-                    log.info("Created new conversation: {}", saved.getId());
+                    log.info("Created new DIRECT conversation: {}", saved.getId());
                     return saved;
                 });
     }
 
+    // new parent ↔ teacher conversation, separate type
+    private Conversation getOrCreateParentDirectConversation(String parentId, String teacherId) {
+        List<String> participantIds = Arrays.asList(parentId, teacherId);
+        participantIds.sort(String::compareTo);
+
+        return conversationRepository
+                .findByParticipantIdsAndType(participantIds, "PARENT_DIRECT")
+                .orElseGet(() -> {
+                    Conversation conversation = Conversation.builder()
+                            .participantIds(participantIds)
+                            .type("PARENT_DIRECT")
+                            .createdAt(LocalDateTime.now())
+                            .build();
+
+                    Conversation saved = conversationRepository.save(conversation);
+                    log.info("Created new PARENT_DIRECT conversation: {}", saved.getId());
+                    return saved;
+                });
+    }
+
+    // TODO: wire this to your auth/user service
+    private String getUserRole(String userId) {
+        // temporary stub – replace with Feign client / DB lookup
+        // e.g. userServiceClient.getUserRole(userId)
+        return "STUDENT";
+    }
+
+    // ----------------- existing methods unchanged -----------------
+
     /**
      * Get user's conversations with pagination
-     * ✅ UPDATED: Pass userId to mapper for user-specific unread count
+     * Pass userId to mapper for user-specific unread count
      */
     public Page<ConversationDto> getUserConversations(String userId, Pageable pageable) {
         log.info("Getting conversations for user: {}", userId);
         return conversationRepository.findByParticipantIdsContaining(userId, pageable)
-                .map(conversation -> conversationMapper.toDto(conversation, userId));  // ✅ Pass userId
+                .map(conversation -> conversationMapper.toDto(conversation, userId));
     }
 
     /**
      * Get conversation by ID
-     * ✅ UPDATED: Pass userId to mapper for user-specific unread count
+     * Pass userId to mapper for user-specific unread count
      */
     public ConversationDto getConversationById(String conversationId, String userId) {
         log.info("Getting conversation {} for user {}", conversationId, userId);
@@ -76,22 +118,32 @@ public class ConversationService {
         Conversation conversation = conversationRepository.findById(conversationId)
                 .orElseThrow(() -> new IllegalArgumentException("Conversation not found: " + conversationId));
 
-        // Verify user is a participant
         if (!conversation.getParticipantIds().contains(userId)) {
             throw new IllegalArgumentException("User is not a participant in this conversation");
         }
 
-        return conversationMapper.toDto(conversation, userId);  // ✅ Pass userId
+        return conversationMapper.toDto(conversation, userId);
+    }
+
+    // for parent observer: child conversations
+    public Page<ConversationDto> getChildConversations(List<String> childIds, Pageable pageable) {
+        log.info("🔍 getChildConversations for childIds: {}", childIds);
+
+        Page<Conversation> page =
+                conversationRepository.findByAnyParticipantInChildren(childIds, pageable);
+        log.info("🔍 Mongo returned {} conversations for childIds {}",
+                page.getTotalElements(), childIds);
+
+        return page.map(conversation -> conversationMapper.toDto(conversation, childIds.get(0)));
     }
 
     /**
      * Get active conversations (with messages)
-     * ✅ UPDATED: Pass userId to mapper for user-specific unread count
      */
     public Page<ConversationDto> getActiveConversations(String userId, Pageable pageable) {
         log.info("Getting active conversations for user: {}", userId);
         return conversationRepository.findActiveConversations(userId, pageable)
-                .map(conversation -> conversationMapper.toDto(conversation, userId));  // ✅ Pass userId
+                .map(conversation -> conversationMapper.toDto(conversation, userId));
     }
 
     /**
@@ -111,7 +163,6 @@ public class ConversationService {
         Conversation conversation = conversationRepository.findById(conversationId)
                 .orElseThrow(() -> new IllegalArgumentException("Conversation not found: " + conversationId));
 
-        // Verify user is a participant
         if (!conversation.getParticipantIds().contains(userId)) {
             throw new IllegalArgumentException("User is not a participant in this conversation");
         }
@@ -121,8 +172,7 @@ public class ConversationService {
     }
 
     /**
-     * ✅ NEW: Mark conversation as read for a user
-     * Called when user opens a conversation
+     * Mark conversation as read for a user
      */
     @Transactional
     public void markConversationAsRead(String conversationId, String userId) {
@@ -131,12 +181,10 @@ public class ConversationService {
         Conversation conversation = conversationRepository.findById(conversationId)
                 .orElseThrow(() -> new IllegalArgumentException("Conversation not found: " + conversationId));
 
-        // Verify user is a participant
         if (!conversation.getParticipantIds().contains(userId)) {
             throw new IllegalArgumentException("User is not a participant in this conversation");
         }
 
-        // Reset unread count for this user
         conversation.resetUnreadCount(userId);
         conversationRepository.save(conversation);
 
@@ -144,8 +192,7 @@ public class ConversationService {
     }
 
     /**
-     * ✅ NEW: Update conversation's last message
-     * Called when a new message is sent
+     * Update conversation's last message
      */
     @Transactional
     public void updateLastMessage(String conversationId, String messageId, String content, String senderId) {
@@ -154,7 +201,6 @@ public class ConversationService {
         Conversation conversation = conversationRepository.findById(conversationId)
                 .orElseThrow(() -> new IllegalArgumentException("Conversation not found: " + conversationId));
 
-        // Update last message details
         conversation.updateLastMessage(messageId, content, senderId);
         conversationRepository.save(conversation);
 
