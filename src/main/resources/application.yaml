@@ -10,12 +10,12 @@ server:
     include-message: always
     include-binding-errors: always
 
-    feign:
-      client:
-        config:
-          user-service:
-            connectTimeout: 5000
-            readTimeout: 5000
+
+
+
+
+
+
 
 
 # ============================================

@@ -39,8 +39,11 @@ public interface ConversationRepository extends MongoRepository<Conversation, St
     @Query(value = "{ 'participantIds': ?0 }", sort = "{ 'lastMessageAt': -1 }")
     Page<Conversation> findByParticipantIdsContaining(String userId, Pageable pageable);
 
-
-    List<Conversation> findByParticipantIdsIn(List<String> participantIds);
+    /**
+     * Find all conversations for a user (List version)
+     */
+    @Query(value = "{ 'participantIds': ?0 }", sort = "{ 'lastMessageAt': -1 }")
+    List<Conversation> findByParticipantIdsContaining(String userId);
 
     /**
      * Find active conversations (with recent messages)
@@ -60,9 +63,6 @@ public interface ConversationRepository extends MongoRepository<Conversation, St
     @Query(value = "{ 'type': ?0, 'participantIds': ?1 }", sort = "{ 'lastMessageAt': -1 }")
     Page<Conversation> findByTypeAndParticipantIdsContaining(String type, String userId, Pageable pageable);
 
-    // ✅ NEW QUERY for parent access
-    @Query(value = "{ 'participantIds': { $in: ?0 } }", sort = "{ 'lastMessageAt': -1 }")
-    Page<Conversation> findByAnyParticipantInChildren(List<String> childIds, Pageable pageable);
 
     /**
      * Delete conversations by participant ID
@@ -70,7 +70,4 @@ public interface ConversationRepository extends MongoRepository<Conversation, St
     @Query(value = "{ 'participantIds': ?0 }", delete = true)
     void deleteByParticipantId(String userId);
 
-    // 🔹 NEW: for DIRECT / PARENT_DIRECT
-    @Query("{ 'participantIds': { $all: ?0 }, 'type': ?1 }")
-    Optional<Conversation> findByParticipantIdsAndType(List<String> participantIds, String type);
 }
