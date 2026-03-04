@@ -38,7 +38,9 @@ public class MessageEventPublisher {
         event.put("timestamp", java.time.Instant.now());
 
         publish(event);
+        log.info("Publishing MESSAGE_SENT for {}", message.getId()); // ✅ correct
     }
+
 
     public void publishMessageDelivered(Message message) {
         Map<String, Object> event = new HashMap<>();
@@ -55,11 +57,14 @@ public class MessageEventPublisher {
         event.put("eventType", "MESSAGE_READ");
         event.put("messageId", message.getId());
         event.put("conversationId", message.getConversationId());
+        event.put("senderId", message.getSenderId()); // original sender
         event.put("readAt", message.getReadAt());
         event.put("timestamp", java.time.Instant.now());
 
         publish(event);
+        log.info("Publishing MESSAGE_READ for {}", message.getId()); // ✅
     }
+
 
     private void publish(Map<String, Object> event) {
         try {

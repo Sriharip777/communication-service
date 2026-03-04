@@ -1,5 +1,6 @@
 package com.tcon.communication_service.config;
 import com.tcon.communication_service.websocket.JwtHandshakeInterceptor;
+import com.tcon.communication_service.websocket.UserIdHandshakeHandler;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.context.annotation.Configuration;
@@ -34,7 +35,8 @@ public class WebSocketConfig implements WebSocketMessageBrokerConfigurer {
 
         registry.addEndpoint("/ws-messaging")
                 .setAllowedOriginPatterns("*")
-                //.addInterceptors(jwtHandshakeInterceptor)
+                .addInterceptors(jwtHandshakeInterceptor)
+                .setHandshakeHandler(new UserIdHandshakeHandler())
                 .withSockJS()
                 .setWebSocketEnabled(true)
                 .setSessionCookieNeeded(false)
@@ -43,8 +45,7 @@ public class WebSocketConfig implements WebSocketMessageBrokerConfigurer {
                 .setHeartbeatTime(25 * 1000)
                 .setSuppressCors(true);
 
-        log.warn(" STOMP endpoint registered WITHOUT authentication (TESTING) ");
-
+        log.info("✅ STOMP endpoint registered WITH JWT authentication");
     }
 
     @Override
