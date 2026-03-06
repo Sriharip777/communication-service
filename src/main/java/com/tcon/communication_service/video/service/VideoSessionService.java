@@ -16,13 +16,6 @@ import java.time.LocalDateTime;
 import java.util.List;
 import java.util.UUID;
 
-/**
- * Video Session Service
- * Business logic for video session management
- *
- * @author Senior Developer
- * @version 1.0.0
- */
 @Slf4j
 @Service
 @RequiredArgsConstructor
@@ -32,25 +25,28 @@ public class VideoSessionService {
     private final AgoraClient agoraClient;
     private final VideoSessionMapper videoSessionMapper;
 
+    // ==================== CREATE ROOM ====================
+
     @Transactional
     public VideoSessionDto createRoom(RoomCreateRequest request) {
         log.info("Creating video session room for class: {}", request.getClassSessionId());
 
-        // Check if session already exists
         if (videoSessionRepository.existsByClassSessionId(request.getClassSessionId())) {
             throw new IllegalStateException("Video session already exists for this class");
         }
 
-        // Create channel in Agora
         String roomName = generateRoomName(request);
         String channelName = agoraClient.createRoom(roomName, request.getDurationMinutes());
 
-        // Build video session entity
+        // ✅ Sanitize parentId: never store empty string, store null instead
+        String sanitizedParentId = (request.getParentId() != null && !request.getParentId().isBlank())
+                ? request.getParentId() : null;
+
         VideoSession session = VideoSession.builder()
                 .classSessionId(request.getClassSessionId())
                 .teacherId(request.getTeacherId())
                 .studentId(request.getStudentId())
-                .parentId(request.getParentId())
+                .parentId(sanitizedParentId)
                 .hundredMsRoomId(channelName)
                 .hundredMsRoomName(roomName)
                 .status(SessionStatus.SCHEDULED)
@@ -68,10 +64,14 @@ public class VideoSessionService {
                 .build();
 
         VideoSession saved = videoSessionRepository.save(session);
-        log.info("Video session created successfully: {}", saved.getId());
+        log.info("✅ Video session created: id={}, teacher={}, student={}, parent={}",
+                saved.getId(), saved.getTeacherId(), saved.getStudentId(),
+                saved.getParentId() != null ? saved.getParentId() : "none");
 
         return videoSessionMapper.toDto(saved);
     }
+
+    // ==================== JOIN SESSION ====================
 
     @Transactional
     public RoomJoinResponse joinSession(String sessionId, String userId, ParticipantRole role) {
@@ -92,14 +92,13 @@ public class VideoSessionService {
         // Validate user is authorized to join
         validateUserAccess(session, userId, role);
 
-        // ✅ NEW: Check if user already joined (prevent duplicates)
+        // Check if user already joined (prevent duplicates)
         boolean alreadyJoined = session.getParticipants().stream()
                 .anyMatch(p -> p.getUserId().equals(userId) && p.getLeftAt() == null);
 
         if (alreadyJoined) {
-            log.warn("⚠️ User {} already joined session {}, returning existing token", userId, sessionId);
+            log.warn("⚠️ User {} already joined session {}, returning fresh token", userId, sessionId);
 
-            // Generate fresh token for existing participant
             AgoraTokenResponse tokenResponse = agoraClient.generateAuthToken(
                     session.getHundredMsRoomId(),
                     userId,
@@ -131,7 +130,7 @@ public class VideoSessionService {
                 tokenResponse.getUid(),
                 tokenResponse.getToken().substring(0, 20));
 
-        // Add participant (only if not already joined)
+        // Add participant
         SessionParticipant participant = SessionParticipant.builder()
                 .userId(userId)
                 .role(role)
@@ -151,6 +150,8 @@ public class VideoSessionService {
 
         videoSessionRepository.save(session);
 
+        log.info("✅ User {} joined session {} as {}", userId, sessionId, role);
+
         return RoomJoinResponse.builder()
                 .sessionId(session.getId())
                 .roomId(session.getHundredMsRoomId())
@@ -165,6 +166,7 @@ public class VideoSessionService {
                 .build();
     }
 
+    // ==================== END SESSION ====================
 
     @Transactional
     public VideoSessionDto endSession(String sessionId, String userId) {
@@ -177,20 +179,16 @@ public class VideoSessionService {
             throw new IllegalStateException("Session is not active");
         }
 
-        // Validate user can end session (teacher only)
         if (!userId.equals(session.getTeacherId())) {
             throw new IllegalArgumentException("Only teacher can end the session");
         }
 
-        // End all active participants
         session.getParticipants().stream()
                 .filter(SessionParticipant::isActive)
                 .forEach(SessionParticipant::leave);
 
-        // End session
         session.endSession();
 
-        // Stop recording if enabled
         if (Boolean.TRUE.equals(session.getRecordingEnabled()) && session.getRecordingId() != null) {
             agoraClient.stopRecording(session.getRecordingId());
         }
@@ -200,6 +198,8 @@ public class VideoSessionService {
 
         return videoSessionMapper.toDto(saved);
     }
+
+    // ==================== GETTERS ====================
 
     public VideoSessionDto getSessionById(String sessionId) {
         VideoSession session = videoSessionRepository.findById(sessionId)
@@ -230,7 +230,6 @@ public class VideoSessionService {
         }
     }
 
-    // ✅ FIXED: Return all sessions without pagination
     public List<VideoSessionDto> getTeacherSessions(String teacherId) {
         log.info("📋 Fetching ALL sessions for teacher: {}", teacherId);
 
@@ -244,7 +243,6 @@ public class VideoSessionService {
                 .toList();
     }
 
-    // ✅ FIXED: Return all sessions without pagination
     public List<VideoSessionDto> getStudentSessions(String studentId) {
         log.info("📋 Fetching ALL sessions for student: {}", studentId);
 
@@ -267,6 +265,8 @@ public class VideoSessionService {
                 .toList();
     }
 
+    // ==================== RECORDING ====================
+
     @Transactional
     public void startRecording(String sessionId) {
         log.info("Starting recording for session: {}", sessionId);
@@ -286,25 +286,46 @@ public class VideoSessionService {
         log.info("Recording started with ID: {}", recordingId);
     }
 
+    // ==================== UTILITY ====================
+
+    // ✅ Used by BookingEventListener to check before creating
+    public boolean existsByClassSessionId(String classSessionId) {
+        return videoSessionRepository.existsByClassSessionId(classSessionId);
+    }
+
     private String generateRoomName(RoomCreateRequest request) {
         return String.format("class_%s_%s",
                 request.getClassSessionId(),
                 UUID.randomUUID().toString().substring(0, 8));
     }
 
+    // ==================== ACCESS VALIDATION ====================
+
     private void validateUserAccess(VideoSession session, String userId, ParticipantRole role) {
         boolean hasAccess = switch (role) {
             case TEACHER -> userId.equals(session.getTeacherId());
             case STUDENT -> userId.equals(session.getStudentId());
-            case PARENT_OBSERVER -> userId.equals(session.getParentId());
+            case PARENT_OBSERVER -> {
+                // ✅ Case 1: parentId explicitly set and matches this user
+                if (session.getParentId() != null
+                        && !session.getParentId().isBlank()
+                        && userId.equals(session.getParentId())) {
+                    log.info("✅ Parent {} authorized via parentId match", userId);
+                    yield true;
+                }
+                // ✅ Case 2: parentId not set at booking time → allow any authenticated parent
+                if (session.getParentId() == null || session.getParentId().isBlank()) {
+                    log.info("✅ Parent {} authorized (no specific parentId set on session)", userId);
+                    yield true;
+                }
+                // ❌ Case 3: parentId set but belongs to a different parent
+                log.warn("❌ Parent {} not authorized. Session parentId: {}", userId, session.getParentId());
+                yield false;
+            }
         };
 
         if (!hasAccess) {
             throw new IllegalArgumentException("User not authorized to join this session");
         }
-    }
-
-    public boolean existsByClassSessionId(String classSessionId) {
-        return videoSessionRepository.existsByClassSessionId(classSessionId);
     }
 }

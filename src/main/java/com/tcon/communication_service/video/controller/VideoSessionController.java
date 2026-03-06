@@ -1,6 +1,7 @@
 package com.tcon.communication_service.video.controller;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.tcon.communication_service.video.dto.HostControlMessage;
 import com.tcon.communication_service.video.dto.RoomCreateRequest;
 import com.tcon.communication_service.video.dto.RoomJoinResponse;
 import com.tcon.communication_service.video.dto.VideoSessionDto;
@@ -11,7 +12,10 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.messaging.handler.annotation.MessageMapping;
+import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.security.core.Authentication;
 
 import java.util.List;
 
@@ -30,7 +34,7 @@ public class VideoSessionController {
 
     private final VideoSessionService videoSessionService;
     private final ObjectMapper objectMapper;
-
+    private final SimpMessagingTemplate messagingTemplate;
     /**
      * Create a new video session room
      */
@@ -161,4 +165,22 @@ public class VideoSessionController {
         videoSessionService.startRecording(sessionId);
         return ResponseEntity.ok().build();
     }
+
+    @MessageMapping("/host/control")
+    public void handleHostControl(HostControlMessage msg, Authentication auth) {
+        // auth.getName() = current userId (teacher)
+        String teacherId = auth != null ? auth.getName() : "unknown";
+        log.info("🎛 Host control from teacher {} -> user {} action {} in session {}",
+                teacherId, msg.getTargetUserId(), msg.getAction(), msg.getSessionId());
+
+        // TODO: optionally validate that teacherId is actually the teacher for this session
+
+        // Send to specific user queue
+        messagingTemplate.convertAndSendToUser(
+                msg.getTargetUserId(),
+                "/queue/host-control",
+                msg
+        );
+    }
+
 }

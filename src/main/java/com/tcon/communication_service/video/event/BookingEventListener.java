@@ -46,14 +46,36 @@ public class BookingEventListener {
                 return;
             }
 
+            // ✅ Sanitize parentId: store null instead of empty string
+            String parentId = (String) event.get("parentId");
+            String sanitizedParentId = (parentId != null && !parentId.isBlank())
+                    ? parentId : null;
+
+            log.info("👪 parentId from event: '{}' → sanitized: '{}'", parentId, sanitizedParentId);
+
+            // ✅ Sanitize studentId as well for safety
+            String studentId = (String) event.get("studentId");
+            String sanitizedStudentId = (studentId != null && !studentId.isBlank())
+                    ? studentId : null;
+
+            // ✅ Sanitize teacherId
+            String teacherId = (String) event.get("teacherId");
+            String sanitizedTeacherId = (teacherId != null && !teacherId.isBlank())
+                    ? teacherId : null;
+
+            // ✅ Sanitize subject
+            String subject = (String) event.get("subject");
+            String sanitizedSubject = (subject != null && !subject.isBlank())
+                    ? subject : null;
+
             RoomCreateRequest request = RoomCreateRequest.builder()
                     .classSessionId(classSessionId)
-                    .teacherId((String) event.get("teacherId"))
-                    .studentId((String) event.get("studentId"))
-                    .parentId((String) event.get("parentId"))
+                    .teacherId(sanitizedTeacherId)
+                    .studentId(sanitizedStudentId)
+                    .parentId(sanitizedParentId)           // ✅ null if empty
                     .scheduledStartTime(LocalDateTime.parse((String) event.get("scheduledStartTime")))
                     .durationMinutes((Integer) event.get("durationMinutes"))
-                    .subject((String) event.get("subject"))
+                    .subject(sanitizedSubject)
                     .recordingEnabled(true)
                     .whiteboardEnabled(true)
                     .chatEnabled(true)
@@ -61,6 +83,9 @@ public class BookingEventListener {
 
             videoSessionService.createRoom(request);
             log.info("✅ Video session created for one-on-one class: {}", classSessionId);
+            log.info("   👨‍🏫 Teacher: {}", sanitizedTeacherId);
+            log.info("   👨‍🎓 Student: {}", sanitizedStudentId);
+            log.info("   👪 Parent: {}", sanitizedParentId != null ? sanitizedParentId : "none");
 
         } catch (Exception e) {
             log.error("❌ Failed to create video session: {}", e.getMessage(), e);
