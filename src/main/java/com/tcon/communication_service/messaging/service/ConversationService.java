@@ -13,12 +13,9 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
 import java.util.Arrays;
+import java.util.HashMap;
 import java.util.List;
 
-/**
- * Conversation Service
- * Business logic for conversations
- */
 @Slf4j
 @Service
 @RequiredArgsConstructor
@@ -28,15 +25,13 @@ public class ConversationService {
     private final ParentServiceClient parentServiceClient;
     private final ConversationMapper conversationMapper;
 
-    /**
-     * Get or create conversation between two users.
-     * For parents, creates/uses PARENT_DIRECT.
-     * For students/teachers, creates/uses DIRECT.
-     */
+    // ─────────────────────────────────────────────────────────────
+    // Get or create conversation
+    // ─────────────────────────────────────────────────────────────
+
     @Transactional
     public Conversation getOrCreateConversation(String currentUserId, String otherUserId, String role) {
-        log.info("Getting or creating conversation between {} and {} (role={})",
-                currentUserId, otherUserId, role);
+        log.info("🔗 getOrCreateConversation: {}({}) ↔ {}", currentUserId, role, otherUserId);
 
         if ("PARENT".equalsIgnoreCase(role)) {
             return getOrCreateParentDirectConversation(currentUserId, otherUserId);
@@ -45,164 +40,167 @@ public class ConversationService {
         }
     }
 
-    // ----------------- internal helpers -----------------
-
-    // existing behaviour for student/teacher chats
-    private Conversation getOrCreateChildConversation(String userId1, String userId2) {
-        List<String> participantIds = Arrays.asList(userId1, userId2);
-        participantIds.sort(String::compareTo);
+    // Student ↔ Teacher DIRECT conversation
+    @Transactional
+    public Conversation getOrCreateChildConversation(String studentId, String teacherId) {
+        List<String> participants = Arrays.asList(studentId, teacherId);
+        participants.sort(String::compareTo);
 
         return conversationRepository
-                .findByParticipantIdsAndType(participantIds, "DIRECT")
+                .findByParticipantIdsAndType(participants, "DIRECT")
                 .orElseGet(() -> {
-                    Conversation conversation = Conversation.builder()
-                            .participantIds(participantIds)
-                            .type("DIRECT")
-                            .createdAt(LocalDateTime.now())
-                            .build();
-
-                    Conversation saved = conversationRepository.save(conversation);
-                    log.info("Created new DIRECT conversation: {}", saved.getId());
-                    return saved;
+                    Conversation conv = new Conversation();
+                    conv.setParticipantIds(participants);
+                    conv.setType("DIRECT");
+                    conv.setCreatedAt(LocalDateTime.now());
+                    conv.setUnreadCounts(new HashMap<>());
+                    log.info("✅ Created DIRECT conversation: {} ↔ {}", studentId, teacherId);
+                    return conversationRepository.save(conv);
                 });
     }
 
-    // parent ↔ teacher conversation, separate type
-    private Conversation getOrCreateParentDirectConversation(String parentId, String teacherId) {
-        List<String> participantIds = Arrays.asList(parentId, teacherId);
-        participantIds.sort(String::compareTo);
+    // Parent ↔ Teacher PARENT_DIRECT conversation
+    @Transactional
+    public Conversation getOrCreateParentDirectConversation(String parentId, String teacherId) {
+        List<String> participants = Arrays.asList(parentId, teacherId);
+        participants.sort(String::compareTo);
 
         return conversationRepository
-                .findByParticipantIdsAndType(participantIds, "PARENT_DIRECT")
+                .findByParticipantIdsAndType(participants, "PARENT_DIRECT")
                 .orElseGet(() -> {
-                    Conversation conversation = Conversation.builder()
-                            .participantIds(participantIds)
+                    Conversation conv = Conversation.builder()
+                            .participantIds(participants)
                             .type("PARENT_DIRECT")
                             .createdAt(LocalDateTime.now())
+                            .unreadCounts(new HashMap<>())
                             .build();
-
-                    Conversation saved = conversationRepository.save(conversation);
-                    log.info("Created new PARENT_DIRECT conversation: {}", saved.getId());
+                    Conversation saved = conversationRepository.save(conv);
+                    log.info("✅ Created PARENT_DIRECT conversation: {} ↔ {}", parentId, teacherId);
                     return saved;
                 });
     }
 
-    // ----------------- existing methods with parent support -----------------
+    // ─────────────────────────────────────────────────────────────
+    // Conversation listing per role
+    // ─────────────────────────────────────────────────────────────
 
-    /**
-     * Get user's conversations with pagination
-     * Pass userId to mapper for user-specific unread count
-     */
+    // All conversations for any user (students, teachers — fallback)
     public Page<ConversationDto> getUserConversations(String userId, Pageable pageable) {
-        log.info("Getting conversations for user: {}", userId);
-        return conversationRepository.findByParticipantIdsContaining(userId, pageable)
-                .map(conversation -> conversationMapper.toDto(conversation, userId));
+        log.info("📋 getUserConversations for: {}", userId);
+        return conversationRepository
+                .findByParticipantIdsContaining(userId, pageable)
+                .map(conv -> conversationMapper.toDto(conv, userId));
     }
 
-    /**
-     * Get conversation by ID with parent–child authorization.
-     * userRole is the role of the current user (PARENT, STUDENT, TEACHER).
-     */
-    public ConversationDto getConversationById(String conversationId, String userId, String userRole) {
-        log.info("Getting conversation {} for user {} (role={})",
-                conversationId, userId, userRole);
-
-        Conversation conversation = conversationRepository.findById(conversationId)
-                .orElseThrow(() -> new IllegalArgumentException("Conversation not found: " + conversationId));
-
-        List<String> participants = conversation.getParticipantIds();
-
-        // 1) If user is a direct participant, allow
-        if (participants.contains(userId)) {
-            return conversationMapper.toDto(conversation, userId);
-        }
-
-        // 2) If user is a parent, allow if any of their children is a participant
-        if ("PARENT".equalsIgnoreCase(userRole)) {
-            List<String> childIds = parentServiceClient.getChildStudentIds(userId);
-            log.info("Parent {} has children {}", userId, childIds);
-
-            boolean anyChildInConversation = childIds.stream()
-                    .anyMatch(participants::contains);
-
-            if (anyChildInConversation) {
-                log.info("Parent {} authorized via child participant", userId);
-                // important: pass parentId as userId so unread counts map correctly for parent
-                return conversationMapper.toDto(conversation, userId);
-            }
-
-            log.warn("Parent {} not linked to any participant in conversation {}", userId, conversationId);
-            throw new IllegalArgumentException("Parent not linked to any participant in this conversation");
-        }
-
-        // 3) Non-parent not in participants -> forbidden
-        log.warn("User {} is not a participant in conversation {}", userId, conversationId);
-        throw new IllegalArgumentException("User is not a participant in this conversation");
+    // ✅ TEACHER: DIRECT (student chats) + PARENT_DIRECT (parent chats)
+    public Page<ConversationDto> getTeacherConversations(String teacherId, Pageable pageable) {
+        log.info("📋 getTeacherConversations (DIRECT + PARENT_DIRECT) for: {}", teacherId);
+        return conversationRepository
+                .findByParticipantAndTypeIn(teacherId, List.of("DIRECT", "PARENT_DIRECT"), pageable)
+                .map(conv -> conversationMapper.toDto(conv, teacherId));
     }
 
-    /**
-     * Get conversations involving any of the given childIds
-     */
+    // ✅ PARENT direct (My Chats with Teachers tab)
+    public Page<ConversationDto> getParentTeacherConversations(String parentId, Pageable pageable) {
+        log.info("📋 getParentTeacherConversations (PARENT_DIRECT) for: {}", parentId);
+        return conversationRepository
+                .findByParticipantAndType(parentId, "PARENT_DIRECT", pageable)
+                .map(conv -> conversationMapper.toDto(conv, parentId));
+    }
+
+    // ✅ PARENT child conversations (observer mode tab)
     public Page<ConversationDto> getChildConversations(List<String> childIds, Pageable pageable) {
-        log.info("🔍 getChildConversations for childIds: {}", childIds);
+        log.info("📋 getChildConversations for childIds: {}", childIds);
 
         if (childIds == null || childIds.isEmpty()) {
-            log.info("🔍 No childIds, returning empty");
             return Page.empty(pageable);
         }
 
         Page<Conversation> page =
                 conversationRepository.findByAnyParticipantInChildren(childIds, pageable);
-        log.info("🔍 Mongo returned {} conversations for childIds {}", page.getTotalElements(), childIds);
-        page.forEach(c -> log.info("🔎 conv id={} participants={} type={}",
-                c.getId(), c.getParticipantIds(), c.getType()));
+        log.info("✅ Found {} conversations for children", page.getTotalElements());
 
-        return page.map(conversation -> conversationMapper.toDto(conversation));
+        return page.map(conv -> conversationMapper.toDto(conv));
     }
 
-    /**
-     * Get active conversations (with messages)
-     */
+    // ─────────────────────────────────────────────────────────────
+    // Conversation by ID (with parent auth)
+    // ─────────────────────────────────────────────────────────────
+
+    public ConversationDto getConversationById(String conversationId, String userId, String userRole) {
+        log.info("🔍 getConversationById: {} for {}({})", conversationId, userId, userRole);
+
+        Conversation conversation = conversationRepository.findById(conversationId)
+                .orElseThrow(() -> new IllegalArgumentException(
+                        "Conversation not found: " + conversationId));
+
+        List<String> participants = conversation.getParticipantIds();
+
+        // 1. Direct participant — always allowed
+        if (participants.contains(userId)) {
+            return conversationMapper.toDto(conversation, userId);
+        }
+
+        // 2. Parent — allowed if any child is participant
+        if ("PARENT".equalsIgnoreCase(userRole)) {
+            List<String> childIds = parentServiceClient.getChildStudentIds(userId);
+            log.info("🔍 Parent {} children: {}", userId, childIds);
+
+            boolean anyChildInConversation = childIds.stream()
+                    .anyMatch(participants::contains);
+
+            if (anyChildInConversation) {
+                log.info("✅ Parent {} authorized via child", userId);
+                return conversationMapper.toDto(conversation, userId);
+            }
+
+            log.warn("🚫 Parent {} not linked to any participant in {}", userId, conversationId);
+            throw new IllegalArgumentException(
+                    "Parent not linked to any participant in this conversation");
+        }
+
+        // 3. Non-participant — forbidden
+        log.warn("🚫 User {} is not a participant in {}", userId, conversationId);
+        throw new IllegalArgumentException("User is not a participant in this conversation");
+    }
+
+    // ─────────────────────────────────────────────────────────────
+    // Existing utility methods (unchanged)
+    // ─────────────────────────────────────────────────────────────
+
     public Page<ConversationDto> getActiveConversations(String userId, Pageable pageable) {
-        log.info("Getting active conversations for user: {}", userId);
+        log.info("📋 getActiveConversations for: {}", userId);
         return conversationRepository.findActiveConversations(userId, pageable)
-                .map(conversation -> conversationMapper.toDto(conversation, userId));
+                .map(conv -> conversationMapper.toDto(conv, userId));
     }
 
-    /**
-     * Count unread conversations
-     */
     public long countUnreadConversations(String userId) {
         return conversationRepository.countUnreadConversations(userId);
     }
 
-    /**
-     * Delete conversation
-     */
     @Transactional
     public void deleteConversation(String conversationId, String userId) {
-        log.info("Deleting conversation {} by user {}", conversationId, userId);
+        log.info("🗑️ deleteConversation: {} by {}", conversationId, userId);
 
         Conversation conversation = conversationRepository.findById(conversationId)
-                .orElseThrow(() -> new IllegalArgumentException("Conversation not found: " + conversationId));
+                .orElseThrow(() -> new IllegalArgumentException(
+                        "Conversation not found: " + conversationId));
 
         if (!conversation.getParticipantIds().contains(userId)) {
             throw new IllegalArgumentException("User is not a participant in this conversation");
         }
 
         conversationRepository.delete(conversation);
-        log.info("Conversation deleted: {}", conversationId);
+        log.info("✅ Conversation deleted: {}", conversationId);
     }
 
-    /**
-     * Mark conversation as read for a user
-     */
     @Transactional
     public void markConversationAsRead(String conversationId, String userId) {
-        log.info("Marking conversation {} as read for user {}", conversationId, userId);
+        log.info("📖 markConversationAsRead: {} for {}", conversationId, userId);
 
         Conversation conversation = conversationRepository.findById(conversationId)
-                .orElseThrow(() -> new IllegalArgumentException("Conversation not found: " + conversationId));
+                .orElseThrow(() -> new IllegalArgumentException(
+                        "Conversation not found: " + conversationId));
 
         if (!conversation.getParticipantIds().contains(userId)) {
             throw new IllegalArgumentException("User is not a participant in this conversation");
@@ -210,23 +208,20 @@ public class ConversationService {
 
         conversation.resetUnreadCount(userId);
         conversationRepository.save(conversation);
-
-        log.info("Conversation {} marked as read for user {}", conversationId, userId);
+        log.info("✅ Conversation {} marked as read for {}", conversationId, userId);
     }
 
-    /**
-     * Update conversation's last message
-     */
     @Transactional
-    public void updateLastMessage(String conversationId, String messageId, String content, String senderId) {
-        log.info("Updating last message for conversation {}", conversationId);
+    public void updateLastMessage(String conversationId, String messageId,
+                                  String content, String senderId) {
+        log.info("📝 updateLastMessage for conversation {}", conversationId);
 
         Conversation conversation = conversationRepository.findById(conversationId)
-                .orElseThrow(() -> new IllegalArgumentException("Conversation not found: " + conversationId));
+                .orElseThrow(() -> new IllegalArgumentException(
+                        "Conversation not found: " + conversationId));
 
         conversation.updateLastMessage(messageId, content, senderId);
         conversationRepository.save(conversation);
-
-        log.info("Updated last message for conversation {}", conversationId);
+        log.info("✅ Last message updated for conversation {}", conversationId);
     }
 }

@@ -36,10 +36,17 @@ public class MessageService {
     @Transactional
     public MessageDto sendMessage(String senderId, String senderRole, MessageSendRequest request) {
         String receiverId = request.getReceiverId();
+        if (receiverId == null || receiverId.isBlank()) {
+            throw new IllegalArgumentException("receiverId is required");
+        }
 
         var conversation = conversationService.getOrCreateConversation(
-                senderId, receiverId, senderRole   // use these names
+                senderId, receiverId, senderRole
         );
+        log.info("SEND WS: conv={} sender={} receiver={} role={} content={}",
+                conversation.getId(), senderId, receiverId, senderRole,
+                request.getContent());
+
 
         if ("PARENT".equals(senderRole)) {
             if (!conversation.getParticipantIds().contains(senderId)) {
