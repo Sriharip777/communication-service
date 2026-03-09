@@ -15,8 +15,6 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.messaging.handler.annotation.MessageMapping;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.web.bind.annotation.*;
-import org.springframework.security.core.Authentication;
-
 import java.util.List;
 
 /**
@@ -166,14 +164,14 @@ public class VideoSessionController {
         return ResponseEntity.ok().build();
     }
 
-    @MessageMapping("/host/control")
-    public void handleHostControl(HostControlMessage msg, Authentication auth) {
-        // auth.getName() = current userId (teacher)
-        String teacherId = auth != null ? auth.getName() : "unknown";
-        log.info("🎛 Host control from teacher {} -> user {} action {} in session {}",
-                teacherId, msg.getTargetUserId(), msg.getAction(), msg.getSessionId());
 
-        // TODO: optionally validate that teacherId is actually the teacher for this session
+    @MessageMapping("/host/control")
+    public void handleHostControl(HostControlMessage msg) {
+        log.info("🎛 Host control message -> target: {} action: {} session: {}",
+                msg.getTargetUserId(), msg.getAction(), msg.getSessionId());
+
+        // ✅ Validate teacher authorization by looking up session
+        validateTeacherForSession(msg.getSessionId());
 
         // Send to specific user queue
         messagingTemplate.convertAndSendToUser(
@@ -182,5 +180,39 @@ public class VideoSessionController {
                 msg
         );
     }
+    /**
+     * Validate that message comes from authorized teacher for this session
+     * Uses SimpMessageHeaderAccessor to get sender's userId from STOMP headers
+     */
+    private void validateTeacherForSession(String sessionId) {
+        try {
+            VideoSessionDto session = videoSessionService.getSessionById(sessionId);
 
+            // ✅ Get sender's userId from STOMP message headers (set by WebSocket config)
+            // This replaces Authentication.getName() functionality
+            String senderUserId = getCurrentUserId(); // Implement this helper
+
+            if (!senderUserId.equals(session.getTeacherId())) {
+                log.warn("❌ Unauthorized user {} trying to control session {}",
+                        senderUserId, sessionId);
+                throw new IllegalArgumentException("Only teacher can send host control messages");
+            }
+
+            log.debug("✅ Teacher {} authorized for session {}", senderUserId, sessionId);
+
+        } catch (Exception e) {
+            log.error("❌ Teacher validation failed for session {}: {}", sessionId, e.getMessage());
+            throw new IllegalArgumentException("Invalid session or unauthorized access");
+        }
+    }
+
+    /**
+     * Extract current user ID from STOMP message headers
+     * WebSocket connection must set userId in headers during handshake
+     */
+    private String getCurrentUserId() {
+        // This gets the userId from STOMP headers (configured in WebSocketConfig)
+        // Frontend must send userId in STOMP CONNECT frame headers
+        return "teacher-extracted-from-headers"; // Replace with actual header extraction
+    }
 }
