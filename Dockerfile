@@ -9,39 +9,34 @@ WORKDIR /app
 COPY .mvn/ .mvn
 COPY mvnw pom.xml ./
 
-# Fix permission for mvnw
 RUN chmod +x mvnw
 
-# Download dependencies
-RUN ./mvnw dependency:go-offline
+# Download dependencies (cached unless pom.xml changes)
+RUN ./mvnw dependency:go-offline -B -q
 
-# Copy source code
+# Copy source and build
 COPY src ./src
-
-# Build JAR
-RUN ./mvnw clean package -DskipTests=true
+RUN ./mvnw clean package -DskipTests=true -B -q
 
 
 # ================================
-# Runtime stage
+# Runtime stage                   ← named so --target works
 # ================================
-FROM eclipse-temurin:17-jre-alpine
+FROM eclipse-temurin:17-jre-alpine AS runtime
 
 WORKDIR /app
 
-# Create non-root user (security best practice)
+# Security: non-root user
 RUN addgroup -S spring && adduser -S spring -G spring
 USER spring:spring
 
-# Copy JAR from builder
+# Copy only the JAR from builder
 COPY --from=builder /app/target/*.jar app.jar
 
-# Expose application port
 EXPOSE 8084
 
-# Health check (Spring Boot Actuator)
-HEALTHCHECK --interval=30s --timeout=3s --start-period=30s --retries=3 \
-  CMD wget --no-verbose --tries=1 --spider http://localhost:8081/actuator/health || exit 1
+# Fixed: port 8080 not 8081
+HEALTHCHECK --interval=30s --timeout=5s --start-period=60s --retries=3 \
+  CMD wget --no-verbose --tries=1 --spider http://localhost:8084/actuator/health || exit 1
 
-# Run application
 ENTRYPOINT ["java", "-Xms256m", "-Xmx512m", "-jar", "app.jar"]
