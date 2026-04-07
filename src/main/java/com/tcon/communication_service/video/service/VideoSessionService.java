@@ -1,18 +1,25 @@
 package com.tcon.communication_service.video.service;
 
 import com.tcon.communication_service.video.dto.AgoraTokenResponse;
-import com.tcon.communication_service.video.integration.AgoraClient;
 import com.tcon.communication_service.video.dto.RoomCreateRequest;
 import com.tcon.communication_service.video.dto.RoomJoinResponse;
 import com.tcon.communication_service.video.dto.VideoSessionDto;
-import com.tcon.communication_service.video.entity.*;
+import com.tcon.communication_service.video.entity.ParticipantRole;
+import com.tcon.communication_service.video.entity.SessionMetadata;
+import com.tcon.communication_service.video.entity.SessionParticipant;
+import com.tcon.communication_service.video.entity.SessionStatus;
+import com.tcon.communication_service.video.entity.VideoSession;
+import com.tcon.communication_service.video.integration.AgoraClient;
 import com.tcon.communication_service.video.repository.VideoSessionRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.server.ResponseStatusException;
 
 import java.time.LocalDateTime;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
 
@@ -32,15 +39,18 @@ public class VideoSessionService {
         log.info("Creating video session room for class: {}", request.getClassSessionId());
 
         if (videoSessionRepository.existsByClassSessionId(request.getClassSessionId())) {
-            throw new IllegalStateException("Video session already exists for this class");
+            throw new ResponseStatusException(
+                    HttpStatus.CONFLICT,
+                    "Video session already exists for this class"
+            );
         }
 
         String roomName = generateRoomName(request);
         String channelName = agoraClient.createRoom(roomName, request.getDurationMinutes());
 
-        // ✅ Sanitize parentId: never store empty string, store null instead
         String sanitizedParentId = (request.getParentId() != null && !request.getParentId().isBlank())
-                ? request.getParentId() : null;
+                ? request.getParentId()
+                : null;
 
         VideoSession session = VideoSession.builder()
                 .classSessionId(request.getClassSessionId())
@@ -78,23 +88,30 @@ public class VideoSessionService {
         log.info("User {} joining session {} as {}", userId, sessionId, role);
 
         VideoSession session = videoSessionRepository.findById(sessionId)
-                .orElseThrow(() -> new IllegalArgumentException("Session not found: " + sessionId));
+                .orElseThrow(() -> new ResponseStatusException(
+                        HttpStatus.NOT_FOUND,
+                        "Session not found: " + sessionId
+                ));
 
-        // Check if session can be joined
         if (!session.canJoin()) {
             LocalDateTime joinWindowStart = session.getScheduledStartTime().minusMinutes(15);
-            throw new IllegalStateException(String.format(
-                    "Session cannot be joined yet. Join window opens at %s (15 minutes before class starts at %s)",
-                    joinWindowStart, session.getScheduledStartTime()
-            ));
+            throw new ResponseStatusException(
+                    HttpStatus.BAD_REQUEST,
+                    String.format(
+                            "Session cannot be joined yet. Join window opens at %s (15 minutes before class starts at %s)",
+                            joinWindowStart, session.getScheduledStartTime()
+                    )
+            );
         }
 
-        // Validate user is authorized to join
         validateUserAccess(session, userId, role);
 
-        // Check if user already joined (prevent duplicates)
+        if (session.getParticipants() == null) {
+            session.setParticipants(new ArrayList<>());
+        }
+
         boolean alreadyJoined = session.getParticipants().stream()
-                .anyMatch(p -> p.getUserId().equals(userId) && p.getLeftAt() == null);
+                .anyMatch(p -> userId.equals(p.getUserId()) && p.getLeftAt() == null);
 
         if (alreadyJoined) {
             log.warn("⚠️ User {} already joined session {}, returning fresh token", userId, sessionId);
@@ -119,18 +136,14 @@ public class VideoSessionService {
                     .build();
         }
 
-        // Generate Agora auth token
         AgoraTokenResponse tokenResponse = agoraClient.generateAuthToken(
                 session.getHundredMsRoomId(),
                 userId,
                 role.name()
         );
 
-        log.info("✅ Agora token generated - UID: {}, Token: {}...",
-                tokenResponse.getUid(),
-                tokenResponse.getToken().substring(0, 20));
+        log.info("✅ Agora token generated - UID: {}", tokenResponse.getUid());
 
-        // Add participant
         SessionParticipant participant = SessionParticipant.builder()
                 .userId(userId)
                 .role(role)
@@ -143,7 +156,6 @@ public class VideoSessionService {
 
         session.addParticipant(participant);
 
-        // Start session if not already started
         if (session.getStatus() == SessionStatus.SCHEDULED) {
             session.startSession();
         }
@@ -173,19 +185,30 @@ public class VideoSessionService {
         log.info("Ending session {} by user {}", sessionId, userId);
 
         VideoSession session = videoSessionRepository.findById(sessionId)
-                .orElseThrow(() -> new IllegalArgumentException("Session not found: " + sessionId));
+                .orElseThrow(() -> new ResponseStatusException(
+                        HttpStatus.NOT_FOUND,
+                        "Session not found: " + sessionId
+                ));
 
         if (!session.isActive()) {
-            throw new IllegalStateException("Session is not active");
+            throw new ResponseStatusException(
+                    HttpStatus.BAD_REQUEST,
+                    "Session is not active"
+            );
         }
 
         if (!userId.equals(session.getTeacherId())) {
-            throw new IllegalArgumentException("Only teacher can end the session");
+            throw new ResponseStatusException(
+                    HttpStatus.FORBIDDEN,
+                    "Only teacher can end the session"
+            );
         }
 
-        session.getParticipants().stream()
-                .filter(SessionParticipant::isActive)
-                .forEach(SessionParticipant::leave);
+        if (session.getParticipants() != null) {
+            session.getParticipants().stream()
+                    .filter(SessionParticipant::isActive)
+                    .forEach(SessionParticipant::leave);
+        }
 
         session.endSession();
 
@@ -203,7 +226,10 @@ public class VideoSessionService {
 
     public VideoSessionDto getSessionById(String sessionId) {
         VideoSession session = videoSessionRepository.findById(sessionId)
-                .orElseThrow(() -> new IllegalArgumentException("Session not found: " + sessionId));
+                .orElseThrow(() -> new ResponseStatusException(
+                        HttpStatus.NOT_FOUND,
+                        "Session not found: " + sessionId
+                ));
         return videoSessionMapper.toDto(session);
     }
 
@@ -213,7 +239,10 @@ public class VideoSessionService {
         VideoSession session = videoSessionRepository.findByClassSessionId(classSessionId)
                 .orElseThrow(() -> {
                     log.error("❌ Session not found for class: {}", classSessionId);
-                    return new IllegalArgumentException("Video session not found for class: " + classSessionId);
+                    return new ResponseStatusException(
+                            HttpStatus.NOT_FOUND,
+                            "Video session not found for class: " + classSessionId
+                    );
                 });
 
         log.info("✅ Session found: id={}, status={}, roomId={}",
@@ -226,7 +255,10 @@ public class VideoSessionService {
             return dto;
         } catch (Exception e) {
             log.error("❌ MAPPER ERROR: {}", e.getMessage(), e);
-            throw new RuntimeException("Failed to convert session to DTO", e);
+            throw new ResponseStatusException(
+                    HttpStatus.INTERNAL_SERVER_ERROR,
+                    "Failed to convert session to DTO"
+            );
         }
     }
 
@@ -272,10 +304,16 @@ public class VideoSessionService {
         log.info("Starting recording for session: {}", sessionId);
 
         VideoSession session = videoSessionRepository.findById(sessionId)
-                .orElseThrow(() -> new IllegalArgumentException("Session not found: " + sessionId));
+                .orElseThrow(() -> new ResponseStatusException(
+                        HttpStatus.NOT_FOUND,
+                        "Session not found: " + sessionId
+                ));
 
         if (!session.isActive()) {
-            throw new IllegalStateException("Session must be active to start recording");
+            throw new ResponseStatusException(
+                    HttpStatus.BAD_REQUEST,
+                    "Session must be active to start recording"
+            );
         }
 
         String recordingId = agoraClient.startRecording(session.getHundredMsRoomId());
@@ -288,7 +326,6 @@ public class VideoSessionService {
 
     // ==================== UTILITY ====================
 
-    // ✅ Used by BookingEventListener to check before creating
     public boolean existsByClassSessionId(String classSessionId) {
         return videoSessionRepository.existsByClassSessionId(classSessionId);
     }
@@ -306,26 +343,28 @@ public class VideoSessionService {
             case TEACHER -> userId.equals(session.getTeacherId());
             case STUDENT -> userId.equals(session.getStudentId());
             case PARENT_OBSERVER -> {
-                // ✅ Case 1: parentId explicitly set and matches this user
                 if (session.getParentId() != null
                         && !session.getParentId().isBlank()
                         && userId.equals(session.getParentId())) {
                     log.info("✅ Parent {} authorized via parentId match", userId);
                     yield true;
                 }
-                // ✅ Case 2: parentId not set at booking time → allow any authenticated parent
+
                 if (session.getParentId() == null || session.getParentId().isBlank()) {
                     log.info("✅ Parent {} authorized (no specific parentId set on session)", userId);
                     yield true;
                 }
-                // ❌ Case 3: parentId set but belongs to a different parent
+
                 log.warn("❌ Parent {} not authorized. Session parentId: {}", userId, session.getParentId());
                 yield false;
             }
         };
 
         if (!hasAccess) {
-            throw new IllegalArgumentException("User not authorized to join this session");
+            throw new ResponseStatusException(
+                    HttpStatus.FORBIDDEN,
+                    "User not authorized to join this session"
+            );
         }
     }
 }
