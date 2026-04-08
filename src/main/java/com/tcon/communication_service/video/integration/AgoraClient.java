@@ -3,7 +3,6 @@ package com.tcon.communication_service.video.integration;
 import com.tcon.communication_service.video.dto.AgoraTokenResponse;
 import io.agora.media.RtcTokenBuilder;
 import io.agora.media.RtcTokenBuilder.Role;
-import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
@@ -15,14 +14,18 @@ import static org.springframework.http.HttpStatus.INTERNAL_SERVER_ERROR;
 
 @Slf4j
 @Service
-@RequiredArgsConstructor
 public class AgoraClient {
 
-    @Value("${agora.api.app-id}")
     private final String appId;
-
-    @Value("${agora.api.app-certificate}")
     private final String appCertificate;
+
+    public AgoraClient(
+            @Value("${agora.api.app-id}") String appId,
+            @Value("${agora.api.app-certificate}") String appCertificate
+    ) {
+        this.appId = appId;
+        this.appCertificate = appCertificate;
+    }
 
     public String createRoom(String roomName, int durationMinutes) {
         log.info("Creating Agora channel: {}", roomName);
