@@ -112,12 +112,20 @@ agora:
   api:
     app-id: ${AGORA_APP_ID:bce4173e4320455fa3a46ea239deac1b}
     app-certificate: ${AGORA_APP_CERTIFICATE:01a320a44f6a43af892b4cb56f3719a5}
+    customer-id: ${AGORA_CUSTOMER_ID:cc7d9d352e234fb6b046981462d9d73e}
+    customer-secret: ${AGORA_CUSTOMER_SECRET:005dd0ae71784bc680cb6b395fa6532d}
+
   recording:
     enabled: true
     quality: 720p
     retention-days: 30
-    customer-id: ${AGORA_CUSTOMER_ID:cc7d9d352e234fb6b046981462d9d73e}
-    customer-secret: ${AGORA_CUSTOMER_SECRET:005dd0ae71784bc680cb6b395fa6532d}
+
+  storage:
+    vendor: 6
+    region: 8
+    bucket: tutoring-platform-files
+    access-key: ${GCS_ACCESS_KEY:GOOG1E7QCDGT35HYTN2ZUUIRXWELDH7JWECNZOZJP5D4LHRNI3ZNUOBG46W6H}
+    secret-key: ${GCS_SECRET_KEY:phIzjIXTGGGKxn7uCvN82r9pH76hENWoSIMaJWCg}
   rtc:
     channel-profile: LIVE_BROADCASTING
     encryption-mode: aes-128-xts

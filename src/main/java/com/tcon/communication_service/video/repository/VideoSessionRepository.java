@@ -12,33 +12,63 @@ import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
 
-/**
- * Video Session Repository
- * Data access layer for video sessions
- */
 @Repository
 public interface VideoSessionRepository extends MongoRepository<VideoSession, String> {
 
+    // ── By classSessionId ─────────────────────────────────────────────────────
     Optional<VideoSession> findByClassSessionId(String classSessionId);
+    boolean existsByClassSessionId(String classSessionId);
 
+    // ── By bookingId ──────────────────────────────────────────────────────────
+    // ✅ NEW — used by GET /sessions/booking/{bookingId}
+    Optional<VideoSession> findByBookingId(String bookingId);
+    boolean existsByBookingId(String bookingId);
+
+    // ── By roomId ─────────────────────────────────────────────────────────────
+    Optional<VideoSession> findByHundredMsRoomId(String roomId);
+
+    // ── By courseId (in metadata) ─────────────────────────────────────────────
     @Query("{'metadata.courseId': ?0}")
     List<VideoSession> findByCourseId(String courseId);
 
-    Optional<VideoSession> findByHundredMsRoomId(String roomId);
+    // ── Teacher queries ───────────────────────────────────────────────────────
+    Page<VideoSession> findByTeacherIdAndStatus(
+            String teacherId, SessionStatus status, Pageable pageable);
 
-    Page<VideoSession> findByTeacherIdAndStatus(String teacherId, SessionStatus status, Pageable pageable);
-
-    Page<VideoSession> findByStudentIdAndStatus(String studentId, SessionStatus status, Pageable pageable);
-
-    // ❌ OLD: Paginated (limited to 20 by default)
-    Page<VideoSession> findByTeacherId(String teacherId, Pageable pageable);
-    Page<VideoSession> findByStudentId(String studentId, Pageable pageable);
-
-    // ✅ NEW: Fetch ALL sessions without pagination, sorted by newest first
+    // ✅ All sessions without pagination
     List<VideoSession> findByTeacherIdOrderByScheduledStartTimeDesc(String teacherId);
+
+    // ✅ Active/upcoming only
+    @Query("{ 'teacherId': ?0, 'status': { $in: ['SCHEDULED', 'IN_PROGRESS'] } }")
+    List<VideoSession> findActiveSessionsByTeacherId(String teacherId);
+
+    long countByTeacherIdAndStatus(String teacherId, SessionStatus status);
+
+    @Query("{ 'teacherId': ?0, 'status': { $in: ?1 }," +
+            " 'scheduledStartTime': { $gte: ?2, $lte: ?3 } }")
+    List<VideoSession> findTeacherSessionsInDateRange(
+            String teacherId,
+            List<SessionStatus> statuses,
+            LocalDateTime start,
+            LocalDateTime end
+    );
+
+    // ── Student queries ───────────────────────────────────────────────────────
+    Page<VideoSession> findByStudentIdAndStatus(
+            String studentId, SessionStatus status, Pageable pageable);
+
+    // ✅ All sessions without pagination
     List<VideoSession> findByStudentIdOrderByScheduledStartTimeDesc(String studentId);
 
-    List<VideoSession> findByStatusAndScheduledStartTimeBefore(SessionStatus status, LocalDateTime time);
+    // ✅ Active/upcoming only
+    @Query("{ 'studentId': ?0, 'status': { $in: ['SCHEDULED', 'IN_PROGRESS'] } }")
+    List<VideoSession> findActiveSessionsByStudentId(String studentId);
+
+    long countByStudentIdAndStatus(String studentId, SessionStatus status);
+
+    // ── Status + time queries ─────────────────────────────────────────────────
+    List<VideoSession> findByStatusAndScheduledStartTimeBefore(
+            SessionStatus status, LocalDateTime time);
 
     @Query("{ 'status': ?0, 'scheduledStartTime': { $gte: ?1, $lte: ?2 } }")
     List<VideoSession> findByStatusAndScheduledStartTimeBetween(
@@ -47,27 +77,7 @@ public interface VideoSessionRepository extends MongoRepository<VideoSession, St
             LocalDateTime end
     );
 
-    @Query("{ 'teacherId': ?0, 'status': { $in: ?1 }, 'scheduledStartTime': { $gte: ?2, $lte: ?3 } }")
-    List<VideoSession> findTeacherSessionsInDateRange(
-            String teacherId,
-            List<SessionStatus> statuses,
-            LocalDateTime start,
-            LocalDateTime end
-    );
-
-    long countByTeacherIdAndStatus(String teacherId, SessionStatus status);
-
-    long countByStudentIdAndStatus(String studentId, SessionStatus status);
-
-    boolean existsByClassSessionId(String classSessionId);
-
+    // ── Stuck sessions ────────────────────────────────────────────────────────
     @Query("{ 'status': 'IN_PROGRESS', 'actualStartTime': { $lte: ?0 } }")
     List<VideoSession> findStuckInProgressSessions(LocalDateTime threshold);
-
-    // ✅ NEW: Find active/upcoming sessions only
-    @Query("{ 'teacherId': ?0, 'status': { $in: ['SCHEDULED', 'IN_PROGRESS'] } }")
-    List<VideoSession> findActiveSessionsByTeacherId(String teacherId);
-
-    @Query("{ 'studentId': ?0, 'status': { $in: ['SCHEDULED', 'IN_PROGRESS'] } }")
-    List<VideoSession> findActiveSessionsByStudentId(String studentId);
 }

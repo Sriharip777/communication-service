@@ -24,6 +24,7 @@ public class VideoSessionDto {
 
     private String id;
     private String classSessionId;
+    private String bookingId;
     private String teacherId;
     private String studentId;
     private String parentId;
@@ -31,9 +32,13 @@ public class VideoSessionDto {
     private String hundredMsRoomName;
     private String recordingId;
     private SessionStatus status;
+    private Boolean canJoin;
 
     @JsonFormat(pattern = "yyyy-MM-dd'T'HH:mm:ss")
     private LocalDateTime scheduledStartTime;
+
+    @JsonFormat(pattern = "yyyy-MM-dd'T'HH:mm:ss")
+    private LocalDateTime scheduledEndTime;
 
     @JsonFormat(pattern = "yyyy-MM-dd'T'HH:mm:ss")
     private LocalDateTime actualStartTime;

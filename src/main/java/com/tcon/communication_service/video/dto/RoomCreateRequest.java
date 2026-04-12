@@ -43,10 +43,16 @@ public class RoomCreateRequest {
     @Positive(message = "Duration must be positive")
     private Integer durationMinutes;
 
+    private String bookingId;
+
+    @JsonFormat(pattern = "yyyy-MM-dd'T'HH:mm:ss")
+    private LocalDateTime scheduledEndTime;
+
     @Builder.Default
     private Boolean recordingEnabled = true;
 
     private String subject;
+    private String channelName;
 
     @Builder.Default
     private Boolean whiteboardEnabled = true;

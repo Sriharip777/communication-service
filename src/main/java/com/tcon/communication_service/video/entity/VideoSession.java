@@ -28,6 +28,7 @@ import java.util.List;
 @Document(collection = "video_sessions")
 @CompoundIndexes({
         @CompoundIndex(name = "class_session_idx", def = "{'classSessionId': 1}"),
+        @CompoundIndex(name = "booking_idx",         def = "{'bookingId': 1}"),
         @CompoundIndex(name = "teacher_status_idx", def = "{'teacherId': 1, 'status': 1}"),
         @CompoundIndex(name = "student_status_idx", def = "{'studentId': 1, 'status': 1}"),
         @CompoundIndex(name = "start_time_idx", def = "{'startTime': -1}")
@@ -39,6 +40,9 @@ public class VideoSession {
 
     @Indexed
     private String classSessionId;
+
+    @Indexed
+    private String bookingId;
 
     @Indexed
     private String teacherId;
@@ -57,6 +61,7 @@ public class VideoSession {
     private SessionStatus status = SessionStatus.SCHEDULED;
 
     private LocalDateTime scheduledStartTime;
+    private LocalDateTime scheduledEndTime;
     private LocalDateTime actualStartTime;
     private LocalDateTime endTime;
 
@@ -117,11 +122,28 @@ public class VideoSession {
     }
 
     public boolean canJoin() {
-        // Allow joining 15 minutes before scheduled time
-        LocalDateTime joinWindowStart = scheduledStartTime.minusMinutes(15);
-        LocalDateTime now = LocalDateTime.now();
+        // ✅ FIX: If no scheduled time, allow joining based on status only
+        if (scheduledStartTime == null) {
+            return status == SessionStatus.SCHEDULED
+                    || status == SessionStatus.IN_PROGRESS;
+        }
 
-        return (status == SessionStatus.SCHEDULED || status == SessionStatus.IN_PROGRESS)
-                && now.isAfter(joinWindowStart);
+        LocalDateTime now = LocalDateTime.now();
+        LocalDateTime joinFrom = scheduledStartTime.minusMinutes(15);
+
+        LocalDateTime joinUntil;
+        if (scheduledEndTime != null) {
+            joinUntil = scheduledEndTime;
+        } else if (durationMinutes != null) {
+            joinUntil = scheduledStartTime.plusMinutes(durationMinutes);
+        } else {
+            joinUntil = scheduledStartTime.plusHours(2);
+        }
+
+        boolean timeOk = now.isAfter(joinFrom) && now.isBefore(joinUntil);
+        boolean statusOk = status == SessionStatus.SCHEDULED
+                || status == SessionStatus.IN_PROGRESS;
+
+        return timeOk && statusOk;
     }
 }

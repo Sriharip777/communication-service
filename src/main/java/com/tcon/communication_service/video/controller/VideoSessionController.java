@@ -15,15 +15,10 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.messaging.handler.annotation.MessageMapping;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.server.ResponseStatusException;
+
 import java.util.List;
 
-/**
- * Video Session Controller
- * REST API endpoints for video session management
- *
- * @author Senior Developer
- * @version 1.0.0
- */
 @Slf4j
 @RestController
 @RequestMapping("/api/video")
@@ -33,9 +28,9 @@ public class VideoSessionController {
     private final VideoSessionService videoSessionService;
     private final ObjectMapper objectMapper;
     private final SimpMessagingTemplate messagingTemplate;
-    /**
-     * Create a new video session room
-     */
+
+    // ==================== CREATE ROOM ====================
+
     @PostMapping("/sessions")
     public ResponseEntity<VideoSessionDto> createRoom(
             @Valid @RequestBody RoomCreateRequest request) {
@@ -44,53 +39,50 @@ public class VideoSessionController {
         return ResponseEntity.status(HttpStatus.CREATED).body(session);
     }
 
-    /**
-     * Join a video session
-     */
+    // ==================== JOIN SESSION ====================
+
     @PostMapping("/sessions/{sessionId}/join")
     public ResponseEntity<RoomJoinResponse> joinSession(
             @PathVariable String sessionId,
             @RequestHeader("X-User-Id") String userId,
             @RequestParam ParticipantRole role) {
-        log.info("User {} joining session {}", userId, sessionId);
+        log.info("🚪 User {} joining session {} as {}", userId, sessionId, role);
         RoomJoinResponse response = videoSessionService.joinSession(sessionId, userId, role);
         return ResponseEntity.ok(response);
     }
 
-    /**
-     * End a video session
-     */
+    // ==================== END SESSION ====================
+
     @PostMapping("/sessions/{sessionId}/end")
     public ResponseEntity<VideoSessionDto> endSession(
             @PathVariable String sessionId,
             @RequestHeader("X-User-Id") String userId) {
-        log.info("Ending session {} by user {}", sessionId, userId);
+        log.info("🛑 Ending session {} by user {}", sessionId, userId);
         VideoSessionDto session = videoSessionService.endSession(sessionId, userId);
         return ResponseEntity.ok(session);
     }
 
-    /**
-     * Get session by class/booking ID
-     */
+    // ==================== GET BY CLASS ID ====================
+
     @GetMapping("/sessions/class/{classSessionId}")
     public ResponseEntity<VideoSessionDto> getSessionByClassId(
             @PathVariable String classSessionId,
             @RequestHeader("X-User-Id") String userId) {
 
-        log.info("📥 Getting video session for class: {} by user: {}", classSessionId, userId);
+        log.info("📥 Getting video session for class={} by user={}", classSessionId, userId);
 
         try {
             VideoSessionDto session = videoSessionService.getSessionByClassId(classSessionId);
 
-            log.info("✅ DTO created: id={}, classId={}, roomId={}",
+            log.info("✅ Session found: id={}, classId={}, roomId={}",
                     session.getId(),
                     session.getClassSessionId(),
                     session.getHundredMsRoomId());
 
-            // ✅ Test JSON serialization
+            // Validate JSON serialization
             try {
                 String json = objectMapper.writeValueAsString(session);
-                log.info("✅ JSON serialized successfully, length: {} bytes", json.length());
+                log.info("✅ JSON serialized: {} bytes", json.length());
                 log.debug("📄 JSON: {}", json);
             } catch (Exception e) {
                 log.error("❌ JSON SERIALIZATION FAILED: {}", e.getMessage(), e);
@@ -102,117 +94,147 @@ public class VideoSessionController {
         } catch (IllegalArgumentException e) {
             log.error("❌ Session not found: {}", e.getMessage());
             return ResponseEntity.notFound().build();
+        } catch (ResponseStatusException e) {
+            if (e.getStatusCode() == HttpStatus.NOT_FOUND) {
+                return ResponseEntity.notFound().build();
+            }
+            throw e;
         } catch (Exception e) {
             log.error("❌ ERROR getting session: {}", e.getMessage(), e);
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build();
         }
     }
 
+    // ==================== GET BY BOOKING ID ✅ NEW ====================
+
     /**
-     * Get session by ID
+     * Get video session by booking ID
+     * Called by student/teacher "Join Class" button
+     * GET /api/video/sessions/booking/{bookingId}
      */
+    @GetMapping("/sessions/booking/{bookingId}")
+    public ResponseEntity<VideoSessionDto> getSessionByBookingId(
+            @PathVariable String bookingId,
+            @RequestHeader("X-User-Id") String userId) {
+
+        log.info("📥 Getting session for bookingId={} by userId={}", bookingId, userId);
+
+        try {
+            VideoSessionDto session = videoSessionService.getSessionByBookingId(bookingId);
+
+            log.info("✅ Session found: id={}, canJoin={}, status={}",
+                    session.getId(), session.getCanJoin(), session.getStatus());
+
+            return ResponseEntity.ok(session);
+
+        } catch (ResponseStatusException e) {
+            if (e.getStatusCode() == HttpStatus.NOT_FOUND) {
+                log.warn("⚠️ No session found for bookingId={}", bookingId);
+                return ResponseEntity.notFound().build();
+            }
+            throw e;
+        } catch (Exception e) {
+            log.error("❌ Error getting session for bookingId={}: {}",
+                    bookingId, e.getMessage());
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build();
+        }
+    }
+
+    // ==================== GET BY SESSION ID ====================
+
     @GetMapping("/sessions/{sessionId}")
-    public ResponseEntity<VideoSessionDto> getSession(@PathVariable String sessionId) {
+    public ResponseEntity<VideoSessionDto> getSession(
+            @PathVariable String sessionId) {
         VideoSessionDto session = videoSessionService.getSessionById(sessionId);
         return ResponseEntity.ok(session);
     }
 
-    /**
-     * ✅ FIXED: Get ALL teacher sessions (no pagination limit)
-     */
+    // ==================== GET TEACHER SESSIONS ====================
+
     @GetMapping("/sessions/teacher/{teacherId}")
     public ResponseEntity<List<VideoSessionDto>> getTeacherSessions(
             @PathVariable String teacherId) {
-        log.info("📥 API: Get ALL sessions for teacher: {}", teacherId);
-
+        log.info("📥 Get ALL sessions for teacher: {}", teacherId);
         List<VideoSessionDto> sessions = videoSessionService.getTeacherSessions(teacherId);
-
-        log.info("✅ Returning {} total sessions for teacher {}", sessions.size(), teacherId);
+        log.info("✅ Returning {} sessions for teacher {}", sessions.size(), teacherId);
         return ResponseEntity.ok(sessions);
     }
 
-    /**
-     * ✅ FIXED: Get ALL student sessions (no pagination limit)
-     */
+    // ==================== GET STUDENT SESSIONS ====================
+
     @GetMapping("/sessions/student/{studentId}")
     public ResponseEntity<List<VideoSessionDto>> getStudentSessions(
             @PathVariable String studentId) {
-        log.info("📥 API: Get ALL sessions for student: {}", studentId);
-
+        log.info("📥 Get ALL sessions for student: {}", studentId);
         List<VideoSessionDto> sessions = videoSessionService.getStudentSessions(studentId);
-
-        log.info("✅ Returning {} total sessions for student {}", sessions.size(), studentId);
+        log.info("✅ Returning {} sessions for student {}", sessions.size(), studentId);
         return ResponseEntity.ok(sessions);
     }
 
-    /**
-     * Get active sessions
-     */
+    // ==================== GET ACTIVE SESSIONS ====================
+
     @GetMapping("/sessions/active")
     public ResponseEntity<List<VideoSessionDto>> getActiveSessions() {
+        log.info("📥 Getting active sessions");
         List<VideoSessionDto> sessions = videoSessionService.getActiveSessions();
+        log.info("✅ Returning {} active sessions", sessions.size());
         return ResponseEntity.ok(sessions);
     }
 
-    /**
-     * Start recording
-     */
+    // ==================== START RECORDING ====================
+
     @PostMapping("/sessions/{sessionId}/recording/start")
     public ResponseEntity<Void> startRecording(@PathVariable String sessionId) {
-        log.info("Starting recording for session: {}", sessionId);
+        log.info("🎙️ Starting recording for session: {}", sessionId);
         videoSessionService.startRecording(sessionId);
         return ResponseEntity.ok().build();
     }
 
+    // ==================== WEBSOCKET HOST CONTROL ====================
 
     @MessageMapping("/host/control")
     public void handleHostControl(HostControlMessage msg) {
-        log.info("🎛 Host control message -> target: {} action: {} session: {}",
+        log.info("🎛 Host control: target={}, action={}, session={}",
                 msg.getTargetUserId(), msg.getAction(), msg.getSessionId());
 
-        // ✅ Validate teacher authorization by looking up session
         validateTeacherForSession(msg.getSessionId());
 
-        // Send to specific user queue
         messagingTemplate.convertAndSendToUser(
                 msg.getTargetUserId(),
                 "/queue/host-control",
                 msg
         );
     }
-    /**
-     * Validate that message comes from authorized teacher for this session
-     * Uses SimpMessageHeaderAccessor to get sender's userId from STOMP headers
-     */
+
+    // ==================== PRIVATE HELPERS ====================
+
     private void validateTeacherForSession(String sessionId) {
         try {
             VideoSessionDto session = videoSessionService.getSessionById(sessionId);
-
-            // ✅ Get sender's userId from STOMP message headers (set by WebSocket config)
-            // This replaces Authentication.getName() functionality
-            String senderUserId = getCurrentUserId(); // Implement this helper
+            String senderUserId = getCurrentUserId();
 
             if (!senderUserId.equals(session.getTeacherId())) {
                 log.warn("❌ Unauthorized user {} trying to control session {}",
                         senderUserId, sessionId);
-                throw new IllegalArgumentException("Only teacher can send host control messages");
+                throw new IllegalArgumentException(
+                        "Only teacher can send host control messages");
             }
-
             log.debug("✅ Teacher {} authorized for session {}", senderUserId, sessionId);
 
+        } catch (IllegalArgumentException e) {
+            throw e;
         } catch (Exception e) {
-            log.error("❌ Teacher validation failed for session {}: {}", sessionId, e.getMessage());
+            log.error("❌ Teacher validation failed for session {}: {}",
+                    sessionId, e.getMessage());
             throw new IllegalArgumentException("Invalid session or unauthorized access");
         }
     }
 
     /**
-     * Extract current user ID from STOMP message headers
-     * WebSocket connection must set userId in headers during handshake
+     * Returns current userId from STOMP session.
+     * TODO: Extract from STOMP session attributes when WebSocket auth is added.
      */
     private String getCurrentUserId() {
-        // This gets the userId from STOMP headers (configured in WebSocketConfig)
-        // Frontend must send userId in STOMP CONNECT frame headers
-        return "teacher-extracted-from-headers"; // Replace with actual header extraction
+        return "unknown-user";
     }
 }
