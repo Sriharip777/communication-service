@@ -10,10 +10,6 @@ import lombok.NoArgsConstructor;
 
 import java.time.LocalDateTime;
 
-/**
- * Message DTO
- * Data transfer object for message
- */
 @Data
 @Builder
 @NoArgsConstructor
@@ -32,19 +28,20 @@ public class MessageDto {
     private Long fileSize;
     private String mimeType;
     private String replyToMessageId;
-    private LocalDateTime  deliveredAt;
     private String replyToContent;
 
+    @JsonFormat(pattern = "yyyy-MM-dd'T'HH:mm:ss", timezone = "UTC")
+    private LocalDateTime deliveredAt;
 
-    @JsonFormat(pattern = "yyyy-MM-dd'T'HH:mm:ss")
+    @JsonFormat(pattern = "yyyy-MM-dd'T'HH:mm:ss", timezone = "UTC")
     private LocalDateTime readAt;
 
     private Boolean isDeleted;
     private Boolean isEdited;
 
-    @JsonFormat(pattern = "yyyy-MM-dd'T'HH:mm:ss")
+    @JsonFormat(pattern = "yyyy-MM-dd'T'HH:mm:ss", timezone = "UTC")
     private LocalDateTime editedAt;
 
-    @JsonFormat(pattern = "yyyy-MM-dd'T'HH:mm:ss")
+    @JsonFormat(pattern = "yyyy-MM-dd'T'HH:mm:ss", timezone = "UTC")
     private LocalDateTime createdAt;
 }

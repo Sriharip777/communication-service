@@ -35,10 +35,13 @@ public class ConversationService {
 
         if ("PARENT".equalsIgnoreCase(role)) {
             return getOrCreateParentDirectConversation(currentUserId, otherUserId);
+        } else if ("MODERATOR".equalsIgnoreCase(role) || "ADMIN".equalsIgnoreCase(role)) {
+            return getOrCreateSupportConversation(currentUserId, otherUserId);
         } else {
             return getOrCreateChildConversation(currentUserId, otherUserId);
         }
     }
+
 
     // Student ↔ Teacher DIRECT conversation
     @Transactional
@@ -98,6 +101,13 @@ public class ConversationService {
         return conversationRepository
                 .findByParticipantAndTypeIn(teacherId, List.of("DIRECT", "PARENT_DIRECT"), pageable)
                 .map(conv -> conversationMapper.toDto(conv, teacherId));
+    }
+
+    public Page<ConversationDto> getSupportConversations(String userId, Pageable pageable) {
+        log.info("📋 getSupportConversations (SUPPORT_DIRECT) for: {}", userId);
+        return conversationRepository
+                .findByParticipantAndTypeIn(userId, List.of("SUPPORT_DIRECT", "DIRECT"), pageable)
+                .map(conv -> conversationMapper.toDto(conv, userId));
     }
 
     // ✅ PARENT direct (My Chats with Teachers tab)
@@ -223,5 +233,25 @@ public class ConversationService {
         conversation.updateLastMessage(messageId, content, senderId);
         conversationRepository.save(conversation);
         log.info("✅ Last message updated for conversation {}", conversationId);
+    }
+
+    @Transactional
+    public Conversation getOrCreateSupportConversation(String supportUserId, String otherUserId) {
+        List<String> participants = Arrays.asList(supportUserId, otherUserId);
+        participants.sort(String::compareTo);
+
+        return conversationRepository
+                .findByParticipantIdsAndType(participants, "SUPPORT_DIRECT")
+                .orElseGet(() -> {
+                    Conversation conv = Conversation.builder()
+                            .participantIds(participants)
+                            .type("SUPPORT_DIRECT")
+                            .createdAt(LocalDateTime.now())
+                            .unreadCounts(new HashMap<>())
+                            .build();
+                    Conversation saved = conversationRepository.save(conv);
+                    log.info("✅ Created SUPPORT_DIRECT conversation: {} ↔ {}", supportUserId, otherUserId);
+                    return saved;
+                });
     }
 }

@@ -199,7 +199,13 @@ public class MessageController {
                     return ResponseEntity.ok(Page.empty(pageable));
                 }
 
-                Page<ConversationDto> convos = conversationService.getChildConversations(childIds, pageable);
+                // ✅ ADD THIS
+                if ("MODERATOR".equalsIgnoreCase(userRole) || "ADMIN".equalsIgnoreCase(userRole)) {
+                    Page<ConversationDto> conversations =
+                            conversationService.getSupportConversations(userId, pageable);
+                }
+
+                    Page<ConversationDto> convos = conversationService.getChildConversations(childIds, pageable);
                 log.info("✅ Found {} child conversations", convos.getTotalElements());
                 return ResponseEntity.ok(convos);
             }
@@ -292,6 +298,7 @@ public class MessageController {
         }
     }
 
+
     // ─────────────────────────────────────────────────────────────
     // Contacts
     // ─────────────────────────────────────────────────────────────
@@ -302,12 +309,20 @@ public class MessageController {
 
         log.info("📇 Getting contacts for user: {}, role: {}", userId, userRole);
         try {
+            // ✅ ADD THIS - moderator and admin can message anyone
+            if ("MODERATOR".equalsIgnoreCase(userRole) || "ADMIN".equalsIgnoreCase(userRole)) {
+                List<ContactDto> contacts = userServiceClient.getContacts(userId, userRole);
+                return ResponseEntity.ok(contacts);
+            }
+
             List<ContactDto> contacts = userServiceClient.getContacts(userId, userRole);
             log.info("✅ Found {} contacts", contacts.size());
             return ResponseEntity.ok(contacts);
         } catch (Exception e) {
             log.error("❌ Error getting contacts: {}", e.getMessage(), e);
-            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(Collections.emptyList());
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(Collections.emptyList());
         }
     }
+
 }
