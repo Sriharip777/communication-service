@@ -15,6 +15,7 @@ import java.time.LocalDateTime;
 import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
+import java.util.Optional;
 
 @Slf4j
 @Service
@@ -33,6 +34,30 @@ public class ConversationService {
     public Conversation getOrCreateConversation(String currentUserId, String otherUserId, String role) {
         log.info("🔗 getOrCreateConversation: {}({}) ↔ {}", currentUserId, role, otherUserId);
 
+        List<String> participants = Arrays.asList(currentUserId, otherUserId);
+        participants.sort(String::compareTo);
+
+        // ✅ Check PARENT_DIRECT first — reuse regardless of who is sending
+        // This prevents teacher reply creating a new DIRECT conversation
+        // when a PARENT_DIRECT already exists between these two users
+        Optional<Conversation> existingParentDirect =
+                conversationRepository.findByParticipantIdsAndType(participants, "PARENT_DIRECT");
+        if (existingParentDirect.isPresent()) {
+            log.info("✅ Reusing existing PARENT_DIRECT conversation for {}({}) ↔ {}",
+                    currentUserId, role, otherUserId);
+            return existingParentDirect.get();
+        }
+
+        // ✅ Check SUPPORT_DIRECT — reuse regardless of who is sending
+        Optional<Conversation> existingSupport =
+                conversationRepository.findByParticipantIdsAndType(participants, "SUPPORT_DIRECT");
+        if (existingSupport.isPresent()) {
+            log.info("✅ Reusing existing SUPPORT_DIRECT conversation for {}({}) ↔ {}",
+                    currentUserId, role, otherUserId);
+            return existingSupport.get();
+        }
+
+        // Route by sender role for new conversations only
         if ("PARENT".equalsIgnoreCase(role)) {
             return getOrCreateParentDirectConversation(currentUserId, otherUserId);
         } else if ("MODERATOR".equalsIgnoreCase(role) || "ADMIN".equalsIgnoreCase(role)) {
