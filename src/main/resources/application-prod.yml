@@ -1,5 +1,9 @@
+# ══════════════════════════════════════════════════════════════════════════════
+# COMMUNICATION-SERVICE — PRODUCTION
+# ══════════════════════════════════════════════════════════════════════════════
+
 server:
-  port: ${PORT:8084}
+  port: ${PORT:8080}
   compression:
     enabled: true
     mime-types: application/json,application/xml,text/html,text/xml,text/plain
@@ -30,9 +34,11 @@ spring:
       database: ${SPRING_DATA_MONGODB_DATABASE:learning_management}
       auto-index-creation: true
       uuid-representation: standard
+
     redis:
       host: ${SPRING_DATA_REDIS_HOST}
       port: ${SPRING_DATA_REDIS_PORT:6379}
+      password: ${SPRING_DATA_REDIS_PASSWORD:}
       timeout: 6000ms
       lettuce:
         pool:
@@ -71,12 +77,15 @@ eureka:
     register-with-eureka: true
     fetch-registry: true
     service-url:
-      defaultZone: ${EUREKA_URL:https://educonservicediscovery-64307221061.asia-south1.run.app/eureka/}
+      defaultZone: ${EUREKA_URL}
     registry-fetch-interval-seconds: 15
   instance:
-    hostname: ${EUREKA_INSTANCE_HOSTNAME:localhost}
+    # ✅ Plain hostname only — prod YML prepends https://
+    # ✅ CORRECT: educonnect-communication-service-64307221061.asia-south1.run.app
+    # ❌ WRONG:   https://educonnect-communication-service-64307221061.asia-south1.run.app
+    hostname: ${EUREKA_INSTANCE_HOSTNAME}
     prefer-ip-address: false
-    instance-id: ${EUREKA_INSTANCE_HOSTNAME:localhost}:${server.port}
+    instance-id: ${EUREKA_INSTANCE_HOSTNAME}:${server.port}
     lease-renewal-interval-in-seconds: 10
     lease-expiration-duration-in-seconds: 30
     non-secure-port-enabled: false
@@ -85,6 +94,7 @@ eureka:
     home-page-url: https://${eureka.instance.hostname}/
     status-page-url: https://${eureka.instance.hostname}/actuator/info
     health-check-url: https://${eureka.instance.hostname}/actuator/health
+    initial-status: UP
 
 agora:
   api:
@@ -96,16 +106,29 @@ agora:
     retention-days: 30
     customer-id: ${AGORA_CUSTOMER_ID}
     customer-secret: ${AGORA_CUSTOMER_SECRET}
+  storage:
+    vendor: 6
+    region: 8
+    bucket: ${AGORA_STORAGE_BUCKET:tutoring-platform-files}
+    access-key: ${GCS_ACCESS_KEY}
+    secret-key: ${GCS_SECRET_KEY}
   rtc:
     channel-profile: LIVE_BROADCASTING
     encryption-mode: aes-128-xts
     max-idle-time: 300
+  whiteboard:
+    app-id: ${AGORA_WHITEBOARD_APP_ID}
+    access-key: ${AGORA_WHITEBOARD_AK}
+    secret-key: ${AGORA_WHITEBOARD_SK}
+    api-base-url: https://api.netless.link/v5
+    region: sg
+    token-expiry-hours: 24
 
 websocket:
   allowed-origins:
-    - ${WEBSOCKET_ALLOWED_ORIGIN_1:http://localhost:3000}
-    - ${WEBSOCKET_ALLOWED_ORIGIN_2:http://localhost:5173}
-    - ${WEBSOCKET_ALLOWED_ORIGIN_3:http://localhost:8080}
+    - ${WEBSOCKET_ALLOWED_ORIGIN_1:https://educonnect.tconsolutions.com}
+    - ${WEBSOCKET_ALLOWED_ORIGIN_2:https://uniflux.tconsolutions.com}
+    - ${WEBSOCKET_ALLOWED_ORIGIN_3:http://localhost:5173}
   message-broker:
     prefix: /app
     destination-prefix: /topic
@@ -116,28 +139,43 @@ message:
   max-message-length: 2000
   typing-indicator-timeout-seconds: 5
 
+app:
+  cors:
+    allowed-origins:
+      - ${CORS_ALLOWED_ORIGIN_1:https://educonnect.tconsolutions.com}
+      - ${CORS_ALLOWED_ORIGIN_2:https://uniflux.tconsolutions.com}
+      - ${CORS_ALLOWED_ORIGIN_3:http://localhost:5173}
+    allowed-methods: GET,POST,PUT,DELETE,PATCH,OPTIONS
+    allowed-headers: "*"
+    allow-credentials: true
+    max-age: 3600
+
 management:
   endpoints:
     web:
       exposure:
         include: health,info,metrics,prometheus
+      base-path: /actuator
   endpoint:
     health:
       redis:
         enabled: false
       show-details: always
+  metrics:
+    tags:
+      application: ${spring.application.name}
 
 logging:
   level:
     root: INFO
-    com.tcon.api_gateway: DEBUG
-    org.springframework.web.socket: TRACE
-    reactor.netty.http.client: DEBUG
-    io.netty.handler.codec.http.websocketx: TRACE
+    com.tcon.communication_service: INFO
+    org.springframework.web.socket: WARN
+    reactor.netty.http.client: WARN
+    io.netty.handler.codec.http.websocketx: WARN
     org.springframework.cloud.loadbalancer: WARN
     io.github.resilience4j: INFO
     reactor.netty: WARN
     io.netty: ERROR
-    org.springframework.data.redis: INFO
+    org.springframework.data.redis: WARN
   pattern:
-    console: "%d{yyyy-MM-dd HH:mm:ss} [%thread] %-5level %logger{36} - %msg%n"
+    console: "%level [%thread] %logger{36} - %msg%n"
