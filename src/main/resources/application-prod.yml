@@ -1,6 +1,6 @@
-# ══════════════════════════════════════════════════════════════════════════════
+# ============================================================================
 # COMMUNICATION-SERVICE — PRODUCTION
-# ══════════════════════════════════════════════════════════════════════════════
+# ============================================================================
 
 server:
   port: ${PORT:8080}
@@ -13,7 +13,7 @@ server:
 
 spring:
   application:
-    name: COMMUNICATION-SERVICE
+    name: communication-service
 
   autoconfigure:
     exclude:
@@ -36,7 +36,7 @@ spring:
       uuid-representation: standard
 
     redis:
-      host: ${SPRING_DATA_REDIS_HOST}
+      host: ${SPRING_DATA_REDIS_HOST:localhost}
       port: ${SPRING_DATA_REDIS_PORT:6379}
       password: ${SPRING_DATA_REDIS_PASSWORD:}
       timeout: 6000ms
@@ -61,40 +61,17 @@ spring:
       value-serializer: org.springframework.kafka.support.serializer.JsonSerializer
       acks: all
       retries: 3
-    topics:
-      video-session-events: ${SPRING_KAFKA_TOPICS_VIDEOSESSIONEVENTS:video-session-events}
-      message-events: ${SPRING_KAFKA_TOPICS_MESSAGEEVENTS:message-events}
-      class-events: ${SPRING_KAFKA_TOPICS_CLASSEVENTS:class-events}
-      booking-events: ${SPRING_KAFKA_TOPICS_BOOKINGEVENTS:booking-events}
 
 jwt:
   secret: ${JWT_SECRET}
   expiration: ${JWT_EXPIRATION:86400000}
 
+# Cloud Run production: direct URLs, no Eureka discovery
 eureka:
   client:
-    enabled: ${EUREKA_ENABLED:true}
-    register-with-eureka: true
-    fetch-registry: true
-    service-url:
-      defaultZone: ${EUREKA_URL}
-    registry-fetch-interval-seconds: 15
-  instance:
-    # ✅ Plain hostname only — prod YML prepends https://
-    # ✅ CORRECT: educonnect-communication-service-64307221061.asia-south1.run.app
-    # ❌ WRONG:   https://educonnect-communication-service-64307221061.asia-south1.run.app
-    hostname: ${EUREKA_INSTANCE_HOSTNAME}
-    prefer-ip-address: false
-    instance-id: ${EUREKA_INSTANCE_HOSTNAME}:${server.port}
-    lease-renewal-interval-in-seconds: 10
-    lease-expiration-duration-in-seconds: 30
-    non-secure-port-enabled: false
-    secure-port-enabled: true
-    secure-port: 443
-    home-page-url: https://${eureka.instance.hostname}/
-    status-page-url: https://${eureka.instance.hostname}/actuator/info
-    health-check-url: https://${eureka.instance.hostname}/actuator/health
-    initial-status: UP
+    enabled: false
+    register-with-eureka: false
+    fetch-registry: false
 
 agora:
   api:
@@ -110,18 +87,18 @@ agora:
     vendor: 6
     region: 8
     bucket: ${AGORA_STORAGE_BUCKET:tutoring-platform-files}
-    access-key: ${GCS_ACCESS_KEY}
-    secret-key: ${GCS_SECRET_KEY}
+    access-key: ${GCS_ACCESS_KEY:}
+    secret-key: ${GCS_SECRET_KEY:}
   rtc:
     channel-profile: LIVE_BROADCASTING
     encryption-mode: aes-128-xts
     max-idle-time: 300
   whiteboard:
-    app-id: ${AGORA_WHITEBOARD_APP_ID}
-    access-key: ${AGORA_WHITEBOARD_AK}
-    secret-key: ${AGORA_WHITEBOARD_SK}
+    app-id: ${AGORA_WHITEBOARD_APP_ID:}
+    access-key: ${AGORA_WHITEBOARD_AK:}
+    secret-key: ${AGORA_WHITEBOARD_SK:}
     api-base-url: https://api.netless.link/v5
-    region: sg
+    region: ${AGORA_WHITEBOARD_REGION:sg}
     token-expiry-hours: 24
 
 websocket:
@@ -177,5 +154,14 @@ logging:
     reactor.netty: WARN
     io.netty: ERROR
     org.springframework.data.redis: WARN
+    com.netflix.discovery: WARN
   pattern:
     console: "%level [%thread] %logger{36} - %msg%n"
+
+# Application topic configuration
+kafka:
+  topics:
+    video-session-events: ${SPRING_KAFKA_TOPICS_VIDEOSESSIONEVENTS:video-session-events}
+    message-events: ${SPRING_KAFKA_TOPICS_MESSAGEEVENTS:message-events}
+    class-events: ${SPRING_KAFKA_TOPICS_CLASSEVENTS:class-events}
+    booking-events: ${SPRING_KAFKA_TOPICS_BOOKINGEVENTS:booking-events}
