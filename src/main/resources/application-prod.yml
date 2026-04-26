@@ -66,12 +66,27 @@ jwt:
   secret: ${JWT_SECRET}
   expiration: ${JWT_EXPIRATION:86400000}
 
-# Cloud Run production: direct URLs, no Eureka discovery
+# Eureka client – enabled for prod
 eureka:
   client:
-    enabled: false
-    register-with-eureka: false
-    fetch-registry: false
+    enabled: ${EUREKA_ENABLED:true}
+    register-with-eureka: true
+    fetch-registry: true
+    service-url:
+      defaultZone: ${EUREKA_URL:https://educonservicediscovery-64307221061.asia-south1.run.app/eureka/}
+    registry-fetch-interval-seconds: 15
+  instance:
+    hostname: ${EUREKA_INSTANCE_HOSTNAME:communication-service}
+    prefer-ip-address: false
+    instance-id: ${EUREKA_INSTANCE_HOSTNAME:communication-service}:${server.port}
+    non-secure-port-enabled: false
+    secure-port-enabled: true
+    secure-port: 443
+    home-page-url: https://${eureka.instance.hostname}/
+    status-page-url: https://${eureka.instance.hostname}/actuator/info
+    health-check-url: https://${eureka.instance.hostname}/actuator/health
+    lease-renewal-interval-in-seconds: 10
+    lease-expiration-duration-in-seconds: 90
 
 agora:
   api:
@@ -158,7 +173,6 @@ logging:
   pattern:
     console: "%level [%thread] %logger{36} - %msg%n"
 
-# Application topic configuration
 kafka:
   topics:
     video-session-events: ${SPRING_KAFKA_TOPICS_VIDEOSESSIONEVENTS:video-session-events}
