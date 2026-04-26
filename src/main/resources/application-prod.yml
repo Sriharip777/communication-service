@@ -76,27 +76,19 @@ eureka:
     service-url:
       defaultZone: ${EUREKA_URL:https://educonservicediscovery-64307221061.asia-south1.run.app/eureka}
     registry-fetch-interval-seconds: 15
-    initial-instance-info-replication-interval-seconds: 10
-    instance-info-replication-interval-seconds: 10
-    eureka-server-connect-timeout-seconds: 10
-    eureka-server-read-timeout-seconds: 10
-    healthcheck:
-      enabled: true
   instance:
-    appname: ${spring.application.name}
+    appname: COMMUNICATION-SERVICE
+    instance-id: communication-service:${EUREKA_INSTANCE_HOSTNAME:educoncommunicationservice-64307221061.asia-south1.run.app}
     hostname: ${EUREKA_INSTANCE_HOSTNAME:educoncommunicationservice-64307221061.asia-south1.run.app}
     prefer-ip-address: false
-    instance-id: ${spring.application.name}:${eureka.instance.hostname}
     non-secure-port-enabled: false
     secure-port-enabled: true
     secure-port: 443
-    home-page-url: https://${eureka.instance.hostname}/
-    status-page-url: https://${eureka.instance.hostname}/actuator/info
-    health-check-url: https://${eureka.instance.hostname}/actuator/health
+    home-page-url: https://${EUREKA_INSTANCE_HOSTNAME:educoncommunicationservice-64307221061.asia-south1.run.app}/
+    status-page-url: https://${EUREKA_INSTANCE_HOSTNAME:educoncommunicationservice-64307221061.asia-south1.run.app}/actuator/info
+    health-check-url: https://${EUREKA_INSTANCE_HOSTNAME:educoncommunicationservice-64307221061.asia-south1.run.app}/actuator/health
     lease-renewal-interval-in-seconds: 10
     lease-expiration-duration-in-seconds: 90
-    metadata-map:
-      management.context-path: /actuator
 
 agora:
   api:
