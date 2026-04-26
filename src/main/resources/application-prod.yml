@@ -66,19 +66,22 @@ jwt:
   secret: ${JWT_SECRET}
   expiration: ${JWT_EXPIRATION:86400000}
 
-# Eureka client – enabled for prod
 eureka:
   client:
     enabled: ${EUREKA_ENABLED:true}
     register-with-eureka: true
     fetch-registry: true
     service-url:
-      defaultZone: ${EUREKA_URL:https://educonservicediscovery-64307221061.asia-south1.run.app/eureka/}
+      defaultZone: ${EUREKA_URL:https://educonservicediscovery-64307221061.asia-south1.run.app/eureka}
     registry-fetch-interval-seconds: 15
+    initial-instance-info-replication-interval-seconds: 10
+    instance-info-replication-interval-seconds: 10
+    eureka-server-connect-timeout-seconds: 10
+    eureka-server-read-timeout-seconds: 10
   instance:
-    hostname: ${EUREKA_INSTANCE_HOSTNAME:communication-service}
+    hostname: ${EUREKA_INSTANCE_HOSTNAME:educoncommunicationservice-64307221061.asia-south1.run.app}
     prefer-ip-address: false
-    instance-id: ${EUREKA_INSTANCE_HOSTNAME:communication-service}:${server.port}
+    instance-id: ${spring.application.name}:${eureka.instance.hostname}
     non-secure-port-enabled: false
     secure-port-enabled: true
     secure-port: 443
@@ -161,6 +164,8 @@ logging:
   level:
     root: INFO
     com.tcon.communication_service: INFO
+    com.netflix.discovery: DEBUG
+    org.springframework.cloud.netflix.eureka: DEBUG
     org.springframework.web.socket: WARN
     reactor.netty.http.client: WARN
     io.netty.handler.codec.http.websocketx: WARN
@@ -169,7 +174,6 @@ logging:
     reactor.netty: WARN
     io.netty: ERROR
     org.springframework.data.redis: WARN
-    com.netflix.discovery: WARN
   pattern:
     console: "%level [%thread] %logger{36} - %msg%n"
 
