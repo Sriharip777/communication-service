@@ -10,6 +10,7 @@ server:
   error:
     include-message: always
     include-binding-errors: always
+  forward-headers-strategy: framework
 
 spring:
   application:
@@ -53,8 +54,9 @@ spring:
       group-id: ${SPRING_KAFKA_CONSUMER_GROUPID:communication-service-group}
       auto-offset-reset: earliest
       key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
-      value-deserializer: org.springframework.kafka.support.serializer.JsonDeserializer
+      value-deserializer: org.springframework.kafka.support.serializer.ErrorHandlingDeserializer
       properties:
+        spring.deserializer.value.delegate.class: org.springframework.kafka.support.serializer.JsonDeserializer
         spring.json.trusted.packages: "*"
     producer:
       key-serializer: org.apache.kafka.common.serialization.StringSerializer
@@ -78,7 +80,10 @@ eureka:
     instance-info-replication-interval-seconds: 10
     eureka-server-connect-timeout-seconds: 10
     eureka-server-read-timeout-seconds: 10
+    healthcheck:
+      enabled: true
   instance:
+    appname: ${spring.application.name}
     hostname: ${EUREKA_INSTANCE_HOSTNAME:educoncommunicationservice-64307221061.asia-south1.run.app}
     prefer-ip-address: false
     instance-id: ${spring.application.name}:${eureka.instance.hostname}
@@ -90,6 +95,8 @@ eureka:
     health-check-url: https://${eureka.instance.hostname}/actuator/health
     lease-renewal-interval-in-seconds: 10
     lease-expiration-duration-in-seconds: 90
+    metadata-map:
+      management.context-path: /actuator
 
 agora:
   api:
@@ -165,7 +172,9 @@ logging:
     root: INFO
     com.tcon.communication_service: INFO
     com.netflix.discovery: DEBUG
+    com.netflix.eureka: DEBUG
     org.springframework.cloud.netflix.eureka: DEBUG
+    org.springframework.cloud.client.discovery: DEBUG
     org.springframework.web.socket: WARN
     reactor.netty.http.client: WARN
     io.netty.handler.codec.http.websocketx: WARN
