@@ -559,11 +559,17 @@ public class WhiteboardService {
 
     private Integer calculateRoomLimit(SessionType sessionType, WhiteboardOpenRequest request) {
         return switch (sessionType) {
-            case SOLO, DEMO -> 2;
-            case RECURRING   -> 2;
-            case GROUP       -> request.getEnrolledStudentIds() != null
-                    ? request.getEnrolledStudentIds().size() + 1
-                    : 50;
+            // 6 = teacher + student + parent/support + 2 buffer slots
+            case SOLO, DEMO, RECURRING -> 6;
+
+            // GROUP: all enrolled students are potential writers,
+            // plus teacher + support + 2 buffer slots
+            case GROUP -> {
+                int base = request.getEnrolledStudentIds() != null
+                        ? request.getEnrolledStudentIds().size()
+                        : 0;
+                yield base + 3; // students + teacher + support/buffer
+            }
         };
     }
 
