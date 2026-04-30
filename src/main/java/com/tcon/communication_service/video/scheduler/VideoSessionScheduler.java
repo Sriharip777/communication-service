@@ -1,5 +1,6 @@
 package com.tcon.communication_service.video.scheduler;
 
+import com.tcon.communication_service.video.entity.SessionParticipant;
 import com.tcon.communication_service.video.entity.SessionStatus;
 import com.tcon.communication_service.video.entity.VideoSession;
 import com.tcon.communication_service.video.repository.VideoSessionRepository;
@@ -20,49 +21,52 @@ public class VideoSessionScheduler {
     private final VideoSessionRepository videoSessionRepository;
 
     /**
-     * Auto-end sessions that have exceeded their scheduled duration
-     * Runs every 5 minutes
+     * Auto-end sessions that exceeded scheduled end time + 15 min grace.
+     * Runs every 5 minutes.
      */
-    @Scheduled(fixedRate = 300000) // 5 minutes
+    @Scheduled(fixedRate = 300000) // Every 5 minutes
     @Transactional
     public void autoEndExpiredSessions() {
-        log.debug("🔍 Checking for expired video sessions...");
+        log.debug("🔍 Checking for expired IN_PROGRESS video sessions...");
 
         LocalDateTime now = LocalDateTime.now();
-        List<VideoSession> inProgressSessions = videoSessionRepository
-                .findByStatusAndScheduledStartTimeBefore(SessionStatus.IN_PROGRESS, now);
+        List<VideoSession> inProgressSessions =
+                videoSessionRepository.findByStatus(SessionStatus.IN_PROGRESS);
 
         for (VideoSession session : inProgressSessions) {
-            LocalDateTime expectedEndTime = session.getScheduledStartTime()
-                    .plusMinutes(session.getDurationMinutes())
-                    .plusMinutes(15); // 15 min grace period
+            LocalDateTime expectedEndTime = resolveExpectedEndTime(session);
+
+            if (expectedEndTime == null) {
+                log.warn("⚠️ Skipping session {} because end time cannot be resolved", session.getId());
+                continue;
+            }
+
+            expectedEndTime = expectedEndTime.plusMinutes(15);
 
             if (now.isAfter(expectedEndTime)) {
-                log.warn("⏰ Auto-ending expired session: {}", session.getId());
+                log.warn("⏰ Auto-ending expired IN_PROGRESS session: {}", session.getId());
+
+                if (session.getParticipants() != null) {
+                    session.getParticipants().stream()
+                            .filter(SessionParticipant::isActive)
+                            .forEach(SessionParticipant::leave);
+                }
+
                 session.endSession();
                 videoSessionRepository.save(session);
             }
         }
     }
 
-    /**
-     * Clean up stuck sessions
-     * Runs every hour
-     */
-    @Scheduled(cron = "0 0 * * * *")
-    @Transactional
-    public void cleanupStuckSessions() {
-        log.info("🧹 Cleaning up stuck sessions...");
-
-        // Sessions stuck in IN_PROGRESS for more than 24 hours
-        LocalDateTime threshold = LocalDateTime.now().minusHours(24);
-        List<VideoSession> stuckSessions = videoSessionRepository
-                .findStuckInProgressSessions(threshold);
-
-        for (VideoSession session : stuckSessions) {
-            log.warn("🔧 Fixing stuck session: {}", session.getId());
-            session.endSession();
-            videoSessionRepository.save(session);
+    private LocalDateTime resolveExpectedEndTime(VideoSession session) {
+        if (session.getScheduledEndTime() != null) {
+            return session.getScheduledEndTime();
         }
+
+        if (session.getScheduledStartTime() != null && session.getDurationMinutes() != null) {
+            return session.getScheduledStartTime().plusMinutes(session.getDurationMinutes());
+        }
+
+        return null;
     }
 }

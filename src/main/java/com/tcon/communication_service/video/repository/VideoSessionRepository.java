@@ -15,6 +15,9 @@ import java.util.Optional;
 @Repository
 public interface VideoSessionRepository extends MongoRepository<VideoSession, String> {
 
+    List<VideoSession> findByStatus(SessionStatus status);
+
+
     // ── By classSessionId ─────────────────────────────────────────────────────
     Optional<VideoSession> findByClassSessionId(String classSessionId);
     boolean existsByClassSessionId(String classSessionId);
