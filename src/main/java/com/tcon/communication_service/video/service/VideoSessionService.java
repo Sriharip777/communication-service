@@ -299,40 +299,42 @@ public class VideoSessionService {
 
     // ==================== GET BY ID ====================
 
+    @Transactional
     public VideoSessionDto getSessionById(String sessionId) {
         VideoSession session = videoSessionRepository.findById(sessionId)
                 .orElseThrow(() -> new ResponseStatusException(
                         HttpStatus.NOT_FOUND,
                         "Session not found: " + sessionId
                 ));
+
+        refreshExpiredSessionStatus(session);
         return videoSessionMapper.toDto(session);
     }
 
     // ==================== GET BY CLASS ID ====================
-
+    @Transactional
     public VideoSessionDto getSessionByClassId(String classSessionId) {
         log.info("🔍 Finding session for classSessionId: {}", classSessionId);
 
         VideoSession session = videoSessionRepository
                 .findByClassSessionId(classSessionId)
                 .orElseThrow(() -> {
-                    log.error("❌ No session for classSessionId: {}",
-                            classSessionId);
+                    log.error("❌ No session for classSessionId: {}", classSessionId);
                     return new ResponseStatusException(
                             HttpStatus.NOT_FOUND,
-                            "Video session not found for class: "
-                                    + classSessionId
+                            "Video session not found for class: " + classSessionId
                     );
                 });
+
+        refreshExpiredSessionStatus(session);
 
         log.info("✅ Session found: id={}, status={}, canJoin={}",
                 session.getId(), session.getStatus(), session.canJoin());
 
         return videoSessionMapper.toDto(session);
     }
-
     // ==================== GET BY BOOKING ID ====================
-
+    @Transactional
     public VideoSessionDto getSessionByBookingId(String bookingId) {
         log.info("🔍 Finding session for bookingId: {}", bookingId);
 
@@ -345,6 +347,9 @@ public class VideoSessionService {
                             "Video session not found for booking: " + bookingId
                     );
                 });
+
+        refreshExpiredSessionStatus(session);
+
         log.info("✅ Session found by bookingId: id={}, status={}, canJoin={}",
                 session.getId(), session.getStatus(), session.canJoin());
 
@@ -353,21 +358,35 @@ public class VideoSessionService {
 
     // ==================== GET TEACHER SESSIONS ====================
 
+    @Transactional
     public List<VideoSessionDto> getTeacherSessions(String teacherId) {
         log.info("📋 Fetching all sessions for teacher: {}", teacherId);
+
         List<VideoSession> sessions = videoSessionRepository
                 .findByTeacherIdOrderByScheduledStartTimeDesc(teacherId);
+
+        sessions.forEach(this::refreshExpiredSessionStatus);
+
         log.info("✅ Found {} sessions for teacher {}", sessions.size(), teacherId);
-        return sessions.stream().map(videoSessionMapper::toDto).toList();
+        return sessions.stream()
+                .map(videoSessionMapper::toDto)
+                .toList();
     }
 
     // ==================== GET STUDENT SESSIONS ====================
+    @Transactional
     public List<VideoSessionDto> getStudentSessions(String studentId) {
         log.info("📋 Fetching all sessions for student: {}", studentId);
+
         List<VideoSession> sessions = videoSessionRepository
                 .findByStudentIdOrderByScheduledStartTimeDesc(studentId);
+
+        sessions.forEach(this::refreshExpiredSessionStatus);
+
         log.info("✅ Found {} sessions for student {}", sessions.size(), studentId);
-        return sessions.stream().map(videoSessionMapper::toDto).toList();
+        return sessions.stream()
+                .map(videoSessionMapper::toDto)
+                .toList();
     }
 
 // ==================== GET ACTIVE SESSIONS ====================
@@ -508,6 +527,65 @@ public class VideoSessionService {
                 .webrtcUrl("wss://agora-rtc.io")
                 .expiresAt(tokenResponse.getExpiresAt())
                 .build();
+    }
+
+    private void refreshExpiredSessionStatus(VideoSession session) {
+        if (session == null) return;
+
+        if (session.getStatus() == SessionStatus.COMPLETED
+                || session.getStatus() == SessionStatus.CANCELLED
+                || session.getStatus() == SessionStatus.NO_SHOW) {
+            return;
+        }
+
+        LocalDateTime now = LocalDateTime.now();
+
+        LocalDateTime end = session.getScheduledEndTime();
+        if (end == null
+                && session.getScheduledStartTime() != null
+                && session.getDurationMinutes() != null) {
+            end = session.getScheduledStartTime().plusMinutes(session.getDurationMinutes());
+        }
+
+        if (end == null) {
+            return;
+        }
+
+        if (now.isAfter(end)) {
+            boolean anyoneJoined = session.getParticipants() != null
+                    && !session.getParticipants().isEmpty();
+
+            if (session.getStatus() == SessionStatus.SCHEDULED) {
+                if (anyoneJoined) {
+                    if (session.getParticipants() != null) {
+                        session.getParticipants().stream()
+                                .filter(SessionParticipant::isActive)
+                                .forEach(SessionParticipant::leave);
+                    }
+
+                    session.endSession();
+                    log.info("✅ Expired scheduled session marked COMPLETED: {}", session.getId());
+                } else {
+                    session.setStatus(SessionStatus.NO_SHOW);
+                    session.setEndTime(now);
+                    log.info("✅ Expired scheduled session marked NO_SHOW: {}", session.getId());
+                }
+                videoSessionRepository.save(session);
+                return;
+            }
+
+            if (session.getStatus() == SessionStatus.IN_PROGRESS) {
+                if (session.getParticipants() != null) {
+                    session.getParticipants().stream()
+                            .filter(SessionParticipant::isActive)
+                            .forEach(SessionParticipant::leave);
+                }
+
+                session.endSession();
+                videoSessionRepository.save(session);
+                log.info("✅ Expired in-progress session auto-marked COMPLETED: {}", session.getId());
+            }
+        }
     }
 
 }
