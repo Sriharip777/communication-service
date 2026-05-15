@@ -1,17 +1,19 @@
 package com.tcon.communication_service.video.event;
 
-import com.tcon.communication_service.video.entity.VideoSession;
-import com.tcon.communication_service.video.entity.SessionStatus;
 import com.tcon.communication_service.video.entity.SessionMetadata;
-import com.tcon.communication_service.video.repository.VideoSessionRepository;
+import com.tcon.communication_service.video.entity.SessionStatus;
+import com.tcon.communication_service.video.entity.VideoSession;
 import com.tcon.communication_service.video.integration.AgoraClient;
+import com.tcon.communication_service.video.repository.VideoSessionRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.kafka.annotation.KafkaListener;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.Instant;
 import java.time.LocalDateTime;
+import java.time.ZoneOffset;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.Map;
@@ -62,15 +64,18 @@ public class SessionEventListener {
                 return;
             }
 
-            LocalDateTime scheduledStartTime = LocalDateTime.parse(
-                    scheduledStartTimeStr,
-                    DateTimeFormatter.ISO_DATE_TIME
-            );
+            Instant scheduledStartTime = parseInstant(scheduledStartTimeStr);
+            Instant scheduledEndTime = parseInstant(scheduledEndTimeStr);
+
+            if (scheduledEndTime == null
+                    && scheduledStartTime != null
+                    && durationMinutes != null) {
+                scheduledEndTime = scheduledStartTime.plusSeconds((long) durationMinutes * 60);
+            }
 
             String roomName = agoraClient.createRoom(sessionId, durationMinutes);
             log.info("✅ Agora room created: {}", roomName);
 
-            // ✅ Create metadata with course info
             SessionMetadata metadata = new SessionMetadata();
             metadata.setCourseId(courseId);
             metadata.setSessionType(sessionType);
@@ -82,12 +87,13 @@ public class SessionEventListener {
             VideoSession videoSession = VideoSession.builder()
                     .classSessionId(sessionId)
                     .teacherId(teacherId)
-                    .studentId(null) // Group session - no single student
+                    .studentId(null)
                     .parentId(null)
                     .hundredMsRoomId(roomName)
                     .hundredMsRoomName(roomName)
                     .status(SessionStatus.SCHEDULED)
                     .scheduledStartTime(scheduledStartTime)
+                    .scheduledEndTime(scheduledEndTime)
                     .durationMinutes(durationMinutes)
                     .participants(new ArrayList<>())
                     .recordingEnabled(true)
@@ -101,7 +107,8 @@ public class SessionEventListener {
             log.info("   🎓 ClassSession ID: {}", saved.getClassSessionId());
             log.info("   📹 Room: {}", saved.getHundredMsRoomName());
             log.info("   👥 Max Participants: {}", maxParticipants);
-            log.info("   📅 Scheduled: {}", scheduledStartTime);
+            log.info("   📅 Scheduled Start: {}", scheduledStartTime);
+            log.info("   📅 Scheduled End: {}", scheduledEndTime);
 
         } catch (Exception e) {
             log.error("❌ Failed to create VideoSession for session event", e);
@@ -124,5 +131,28 @@ public class SessionEventListener {
         } catch (Exception e) {
             log.error("❌ Failed to cancel VideoSession", e);
         }
+    }
+
+    private Instant parseInstant(String value) {
+        if (value == null || value.isBlank()) {
+            return null;
+        }
+
+        try {
+            return Instant.parse(value);
+        } catch (Exception ignored) {
+        }
+
+        try {
+            return java.time.OffsetDateTime.parse(value, DateTimeFormatter.ISO_DATE_TIME).toInstant();
+        } catch (Exception ignored) {
+        }
+
+        try {
+            return LocalDateTime.parse(value, DateTimeFormatter.ISO_DATE_TIME).toInstant(ZoneOffset.UTC);
+        } catch (Exception ignored) {
+        }
+
+        return null;
     }
 }

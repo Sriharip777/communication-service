@@ -5,7 +5,8 @@ import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
-import java.time.LocalDateTime;
+import java.time.Duration;
+import java.time.Instant;
 
 /**
  * Session Participant
@@ -21,8 +22,8 @@ public class SessionParticipant {
     private ParticipantRole role;
     private String hundredMsPeerId;
 
-    private LocalDateTime joinedAt;
-    private LocalDateTime leftAt;
+    private Instant joinedAt;
+    private Instant leftAt;
 
     @Builder.Default
     private Boolean isCameraEnabled = true;
@@ -35,17 +36,19 @@ public class SessionParticipant {
 
     private Integer durationMinutes;
 
-    // Calculate duration when participant leaves
+    /**
+     * Mark participant as left and calculate duration in minutes.
+     */
     public void leave() {
-        this.leftAt = LocalDateTime.now();
+        this.leftAt = Instant.now();
         if (this.joinedAt != null) {
-            this.durationMinutes = (int) java.time.Duration
+            this.durationMinutes = (int) Duration
                     .between(this.joinedAt, this.leftAt)
                     .toMinutes();
         }
     }
 
     public boolean isActive() {
-        return leftAt == null;
+        return this.leftAt == null;
     }
 }

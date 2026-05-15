@@ -13,7 +13,8 @@ import org.springframework.data.mongodb.core.index.CompoundIndexes;
 import org.springframework.data.mongodb.core.index.Indexed;
 import org.springframework.data.mongodb.core.mapping.Document;
 
-import java.time.LocalDateTime;
+import java.time.Duration;
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -28,10 +29,10 @@ import java.util.List;
 @Document(collection = "video_sessions")
 @CompoundIndexes({
         @CompoundIndex(name = "class_session_idx", def = "{'classSessionId': 1}"),
-        @CompoundIndex(name = "booking_idx",         def = "{'bookingId': 1}"),
+        @CompoundIndex(name = "booking_idx", def = "{'bookingId': 1}"),
         @CompoundIndex(name = "teacher_status_idx", def = "{'teacherId': 1, 'status': 1}"),
         @CompoundIndex(name = "student_status_idx", def = "{'studentId': 1, 'status': 1}"),
-        @CompoundIndex(name = "start_time_idx", def = "{'startTime': -1}")
+        @CompoundIndex(name = "scheduled_start_time_idx", def = "{'scheduledStartTime': -1}")
 })
 public class VideoSession {
 
@@ -50,9 +51,8 @@ public class VideoSession {
     @Indexed
     private String studentId;
 
-    private String parentId; // Optional parent observer
+    private String parentId;
 
-    // 100ms specific fields
     private String hundredMsRoomId;
     private String hundredMsRoomName;
     private String recordingId;
@@ -60,10 +60,12 @@ public class VideoSession {
     @Builder.Default
     private SessionStatus status = SessionStatus.SCHEDULED;
 
-    private LocalDateTime scheduledStartTime;
-    private LocalDateTime scheduledEndTime;
-    private LocalDateTime actualStartTime;
-    private LocalDateTime endTime;
+    @Indexed
+    private Instant scheduledStartTime;
+
+    private Instant scheduledEndTime;
+    private Instant actualStartTime;
+    private Instant endTime;
 
     private Integer durationMinutes;
     private Integer actualDurationMinutes;
@@ -71,13 +73,11 @@ public class VideoSession {
     @Builder.Default
     private List<SessionParticipant> participants = new ArrayList<>();
 
-    // Recording details
     @Builder.Default
     private Boolean recordingEnabled = true;
     private String recordingUrl;
     private String recordingStatus;
 
-    // Session metadata
     @Builder.Default
     private SessionMetadata metadata = new SessionMetadata();
 
@@ -85,12 +85,11 @@ public class VideoSession {
     private Long version;
 
     @CreatedDate
-    private LocalDateTime createdAt;
+    private Instant createdAt;
 
     @LastModifiedDate
-    private LocalDateTime updatedAt;
+    private Instant updatedAt;
 
-    // Helper methods
     public void addParticipant(SessionParticipant participant) {
         if (this.participants == null) {
             this.participants = new ArrayList<>();
@@ -100,14 +99,14 @@ public class VideoSession {
 
     public void startSession() {
         this.status = SessionStatus.IN_PROGRESS;
-        this.actualStartTime = LocalDateTime.now();
+        this.actualStartTime = Instant.now();
     }
 
     public void endSession() {
         this.status = SessionStatus.COMPLETED;
-        this.endTime = LocalDateTime.now();
+        this.endTime = Instant.now();
         if (this.actualStartTime != null) {
-            this.actualDurationMinutes = (int) java.time.Duration
+            this.actualDurationMinutes = (int) Duration
                     .between(this.actualStartTime, this.endTime)
                     .toMinutes();
         }
@@ -122,25 +121,24 @@ public class VideoSession {
     }
 
     public boolean canJoin() {
-        // ✅ FIX: If no scheduled time, allow joining based on status only
         if (scheduledStartTime == null) {
             return status == SessionStatus.SCHEDULED
                     || status == SessionStatus.IN_PROGRESS;
         }
 
-        LocalDateTime now = LocalDateTime.now();
-        LocalDateTime joinFrom = scheduledStartTime.minusMinutes(15);
+        Instant now = Instant.now();
+        Instant joinFrom = scheduledStartTime.minusSeconds(15 * 60);
 
-        LocalDateTime joinUntil;
+        Instant joinUntil;
         if (scheduledEndTime != null) {
             joinUntil = scheduledEndTime;
         } else if (durationMinutes != null) {
-            joinUntil = scheduledStartTime.plusMinutes(durationMinutes);
+            joinUntil = scheduledStartTime.plusSeconds((long) durationMinutes * 60);
         } else {
-            joinUntil = scheduledStartTime.plusHours(2);
+            joinUntil = scheduledStartTime.plusSeconds(2 * 60 * 60);
         }
 
-        boolean timeOk = now.isAfter(joinFrom) && now.isBefore(joinUntil);
+        boolean timeOk = !now.isBefore(joinFrom) && now.isBefore(joinUntil);
         boolean statusOk = status == SessionStatus.SCHEDULED
                 || status == SessionStatus.IN_PROGRESS;
 

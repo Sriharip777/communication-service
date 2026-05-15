@@ -9,6 +9,7 @@ import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
+import java.time.Instant;
 import java.time.LocalDateTime;
 import java.util.List;
 
@@ -34,17 +35,12 @@ public class VideoSessionDto {
     private SessionStatus status;
     private Boolean canJoin;
 
-    @JsonFormat(pattern = "yyyy-MM-dd'T'HH:mm:ss")
-    private LocalDateTime scheduledStartTime;
-
-    @JsonFormat(pattern = "yyyy-MM-dd'T'HH:mm:ss")
-    private LocalDateTime scheduledEndTime;
-
-    @JsonFormat(pattern = "yyyy-MM-dd'T'HH:mm:ss")
-    private LocalDateTime actualStartTime;
-
-    @JsonFormat(pattern = "yyyy-MM-dd'T'HH:mm:ss")
-    private LocalDateTime endTime;
+    private Instant scheduledStartTime;
+    private Instant scheduledEndTime;
+    private Instant actualStartTime;
+    private Instant endTime;
+    private Instant createdAt;
+    private Instant updatedAt;
 
     private Integer durationMinutes;
     private Integer actualDurationMinutes;
@@ -54,9 +50,4 @@ public class VideoSessionDto {
     private String recordingStatus;
     private SessionMetadataDto metadata;
 
-    @JsonFormat(pattern = "yyyy-MM-dd'T'HH:mm:ss")
-    private LocalDateTime createdAt;
-
-    @JsonFormat(pattern = "yyyy-MM-dd'T'HH:mm:ss")
-    private LocalDateTime updatedAt;
 }

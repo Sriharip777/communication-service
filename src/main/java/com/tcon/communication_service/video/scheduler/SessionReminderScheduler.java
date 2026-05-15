@@ -11,7 +11,7 @@ import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Duration;
-import java.time.LocalDateTime;
+import java.time.Instant;
 import java.util.List;
 import java.util.Map;
 
@@ -35,8 +35,8 @@ public class SessionReminderScheduler {
      */
     @Scheduled(fixedRate = 60000) // Every 1 minute
     public void sendSessionReminders() {
-        LocalDateTime now = LocalDateTime.now();
-        LocalDateTime in15Minutes = now.plusMinutes(15);
+        Instant now = Instant.now();
+        Instant in15Minutes = now.plusSeconds(15 * 60L);
 
         List<VideoSession> upcomingSessions = videoSessionRepository
                 .findByStatusAndScheduledStartTimeBetween(
@@ -71,7 +71,8 @@ public class SessionReminderScheduler {
     @Scheduled(fixedRate = 300000) // Every 5 minutes
     @Transactional
     public void cleanupStuckSessions() {
-        LocalDateTime threshold = LocalDateTime.now().minusHours(3);
+        Instant threshold = Instant.now().minusSeconds(3 * 60 * 60L);
+
         List<VideoSession> stuckSessions = videoSessionRepository
                 .findStuckInProgressSessions(threshold);
 
@@ -94,13 +95,13 @@ public class SessionReminderScheduler {
     @Scheduled(fixedRate = 300000) // Every 5 minutes
     @Transactional
     public void markNoShowSessions() {
-        LocalDateTime now = LocalDateTime.now();
+        Instant now = Instant.now();
 
         List<VideoSession> scheduledSessions =
                 videoSessionRepository.findByStatus(SessionStatus.SCHEDULED);
 
         for (VideoSession session : scheduledSessions) {
-            LocalDateTime end = resolveSessionEndTime(session);
+            Instant end = resolveSessionEndTime(session);
 
             if (end == null) {
                 continue;
@@ -215,13 +216,14 @@ public class SessionReminderScheduler {
     /**
      * Resolve session end time from scheduledEndTime or scheduledStartTime + durationMinutes.
      */
-    private LocalDateTime resolveSessionEndTime(VideoSession session) {
+    private Instant resolveSessionEndTime(VideoSession session) {
         if (session.getScheduledEndTime() != null) {
             return session.getScheduledEndTime();
         }
 
         if (session.getScheduledStartTime() != null && session.getDurationMinutes() != null) {
-            return session.getScheduledStartTime().plusMinutes(session.getDurationMinutes());
+            return session.getScheduledStartTime()
+                    .plusSeconds((long) session.getDurationMinutes() * 60);
         }
 
         return null;

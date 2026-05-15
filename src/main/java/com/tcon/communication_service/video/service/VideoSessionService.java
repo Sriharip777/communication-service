@@ -19,7 +19,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
-import java.time.LocalDateTime;
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -95,12 +95,12 @@ public class VideoSessionService {
         );
 
         // ── Calculate end time ────────────────────────────────────────────
-        LocalDateTime endTime = request.getScheduledEndTime();
+        Instant endTime = request.getScheduledEndTime();
         if (endTime == null
                 && request.getScheduledStartTime() != null
                 && request.getDurationMinutes() != null) {
             endTime = request.getScheduledStartTime()
-                    .plusMinutes(request.getDurationMinutes());
+                    .plusSeconds((long) request.getDurationMinutes() * 60);
         }
 
         // ── Build entity ──────────────────────────────────────────────────
@@ -159,8 +159,8 @@ public class VideoSessionService {
                 ));
 
         if (!session.canJoin()) {
-            LocalDateTime joinWindowStart = session.getScheduledStartTime() != null
-                    ? session.getScheduledStartTime().minusMinutes(15)
+            Instant joinWindowStart = session.getScheduledStartTime() != null
+                    ? session.getScheduledStartTime().minusSeconds(15 * 60L)
                     : null;
             throw new ResponseStatusException(
                     HttpStatus.BAD_REQUEST,
@@ -205,7 +205,7 @@ public class VideoSessionService {
                 .userId(userId)
                 .role(role)
                 .hundredMsPeerId(userId)
-                .joinedAt(LocalDateTime.now())
+                .joinedAt(Instant.now())
                 .isCameraEnabled(role != ParticipantRole.PARENT_OBSERVER)
                 .isMicEnabled(role != ParticipantRole.PARENT_OBSERVER)
                 .isScreenSharing(false)
@@ -260,8 +260,6 @@ public class VideoSessionService {
 
         session.endSession();
 
-        // ── Stop cloud recording and get real GCS URL ─────────────────────
-        // ── Stop cloud recording and get real GCS URL ─────────────────────
         String realVideoUrl = null;
 
         if (Boolean.TRUE.equals(session.getRecordingEnabled())
@@ -269,10 +267,9 @@ public class VideoSessionService {
 
             log.info("🎙️ Stopping cloud recording: {}", session.getRecordingId());
 
-            // ✅ FIX: Pass channelName (hundredMsRoomId) to stopRecording
             realVideoUrl = agoraClient.stopRecording(
                     session.getRecordingId(),
-                    session.getHundredMsRoomId()  // ← ADD THIS
+                    session.getHundredMsRoomId()
             );
 
             if (realVideoUrl != null) {
@@ -289,7 +286,6 @@ public class VideoSessionService {
         log.info("✅ Session ended: {}, duration: {} min",
                 saved.getId(), saved.getActualDurationMinutes());
 
-        // ✅ Publish RECORDING_READY Kafka event to content-service
         if (realVideoUrl != null) {
             publishRecordingReady(saved, realVideoUrl);
         }
@@ -333,6 +329,7 @@ public class VideoSessionService {
 
         return videoSessionMapper.toDto(session);
     }
+
     // ==================== GET BY BOOKING ID ====================
     @Transactional
     public VideoSessionDto getSessionByBookingId(String bookingId) {
@@ -389,19 +386,19 @@ public class VideoSessionService {
                 .toList();
     }
 
-// ==================== GET ACTIVE SESSIONS ====================
+    // ==================== GET ACTIVE SESSIONS ====================
 
     public List<VideoSessionDto> getActiveSessions() {
         return videoSessionRepository
                 .findByStatusAndScheduledStartTimeBefore(
                         SessionStatus.IN_PROGRESS,
-                        LocalDateTime.now())
+                        Instant.now())
                 .stream()
                 .map(videoSessionMapper::toDto)
                 .toList();
     }
 
-// ==================== START RECORDING ====================
+    // ==================== START RECORDING ====================
 
     @Transactional
     public void startRecording(String sessionId) {
@@ -420,8 +417,6 @@ public class VideoSessionService {
             );
         }
 
-        // ✅ startRecording now calls real Agora Cloud Recording API
-        // Returns "resourceId:sid" if configured, else stub "agora_rec_UUID"
         String recordingId = agoraClient.startRecording(
                 session.getHundredMsRoomId());
 
@@ -432,13 +427,13 @@ public class VideoSessionService {
         log.info("✅ Recording started with ID: {}", recordingId);
     }
 
-// ==================== UTILITY ====================
+    // ==================== UTILITY ====================
 
     public boolean existsByClassSessionId(String classSessionId) {
         return videoSessionRepository.existsByClassSessionId(classSessionId);
     }
 
-// ==================== PRIVATE: PUBLISH RECORDING READY ================
+    // ==================== PRIVATE: PUBLISH RECORDING READY ================
 
     private void publishRecordingReady(VideoSession session, String videoUrl) {
         try {
@@ -463,7 +458,7 @@ public class VideoSessionService {
         }
     }
 
-// ==================== PRIVATE: GENERATE ROOM NAME ====================
+    // ==================== PRIVATE: GENERATE ROOM NAME ====================
 
     private String generateRoomName(RoomCreateRequest request) {
         return String.format("class_%s_%s",
@@ -471,7 +466,7 @@ public class VideoSessionService {
                 UUID.randomUUID().toString().substring(0, 8));
     }
 
-// ==================== PRIVATE: VALIDATE USER ACCESS ==================
+    // ==================== PRIVATE: VALIDATE USER ACCESS ==================
 
     private void validateUserAccess(
             VideoSession session, String userId, ParticipantRole role) {
@@ -506,7 +501,7 @@ public class VideoSessionService {
         }
     }
 
-// ==================== PRIVATE: BUILD JOIN RESPONSE ===================
+    // ==================== PRIVATE: BUILD JOIN RESPONSE ===================
 
     private RoomJoinResponse buildJoinResponse(
             VideoSession session,
@@ -538,13 +533,14 @@ public class VideoSessionService {
             return;
         }
 
-        LocalDateTime now = LocalDateTime.now();
+        Instant now = Instant.now();
 
-        LocalDateTime end = session.getScheduledEndTime();
+        Instant end = session.getScheduledEndTime();
         if (end == null
                 && session.getScheduledStartTime() != null
                 && session.getDurationMinutes() != null) {
-            end = session.getScheduledStartTime().plusMinutes(session.getDurationMinutes());
+            end = session.getScheduledStartTime()
+                    .plusSeconds((long) session.getDurationMinutes() * 60);
         }
 
         if (end == null) {

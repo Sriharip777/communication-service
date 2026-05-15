@@ -10,7 +10,7 @@ import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.time.LocalDateTime;
+import java.time.Instant;
 import java.util.List;
 
 @Slf4j
@@ -29,19 +29,19 @@ public class VideoSessionScheduler {
     public void autoEndExpiredSessions() {
         log.debug("🔍 Checking for expired IN_PROGRESS video sessions...");
 
-        LocalDateTime now = LocalDateTime.now();
+        Instant now = Instant.now();
         List<VideoSession> inProgressSessions =
                 videoSessionRepository.findByStatus(SessionStatus.IN_PROGRESS);
 
         for (VideoSession session : inProgressSessions) {
-            LocalDateTime expectedEndTime = resolveExpectedEndTime(session);
+            Instant expectedEndTime = resolveExpectedEndTime(session);
 
             if (expectedEndTime == null) {
                 log.warn("⚠️ Skipping session {} because end time cannot be resolved", session.getId());
                 continue;
             }
 
-            expectedEndTime = expectedEndTime.plusMinutes(15);
+            expectedEndTime = expectedEndTime.plusSeconds(15 * 60L);
 
             if (now.isAfter(expectedEndTime)) {
                 log.warn("⏰ Auto-ending expired IN_PROGRESS session: {}", session.getId());
@@ -58,13 +58,14 @@ public class VideoSessionScheduler {
         }
     }
 
-    private LocalDateTime resolveExpectedEndTime(VideoSession session) {
+    private Instant resolveExpectedEndTime(VideoSession session) {
         if (session.getScheduledEndTime() != null) {
             return session.getScheduledEndTime();
         }
 
         if (session.getScheduledStartTime() != null && session.getDurationMinutes() != null) {
-            return session.getScheduledStartTime().plusMinutes(session.getDurationMinutes());
+            return session.getScheduledStartTime()
+                    .plusSeconds((long) session.getDurationMinutes() * 60);
         }
 
         return null;

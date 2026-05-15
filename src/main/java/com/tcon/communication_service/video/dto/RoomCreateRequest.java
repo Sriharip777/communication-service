@@ -1,7 +1,5 @@
 package com.tcon.communication_service.video.dto;
 
-
-import com.fasterxml.jackson.annotation.JsonFormat;
 import jakarta.validation.constraints.Future;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
@@ -11,7 +9,7 @@ import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
-import java.time.LocalDateTime;
+import java.time.Instant;
 
 /**
  * Room Create Request DTO
@@ -36,8 +34,7 @@ public class RoomCreateRequest {
 
     @NotNull(message = "Scheduled start time is required")
     @Future(message = "Scheduled start time must be in the future")
-    @JsonFormat(pattern = "yyyy-MM-dd'T'HH:mm:ss")
-    private LocalDateTime scheduledStartTime;
+    private Instant scheduledStartTime;
 
     @NotNull(message = "Duration is required")
     @Positive(message = "Duration must be positive")
@@ -45,8 +42,7 @@ public class RoomCreateRequest {
 
     private String bookingId;
 
-    @JsonFormat(pattern = "yyyy-MM-dd'T'HH:mm:ss")
-    private LocalDateTime scheduledEndTime;
+    private Instant scheduledEndTime;
 
     @Builder.Default
     private Boolean recordingEnabled = true;

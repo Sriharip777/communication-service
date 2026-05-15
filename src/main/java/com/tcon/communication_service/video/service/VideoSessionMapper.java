@@ -12,13 +12,6 @@ import org.springframework.stereotype.Component;
 import java.util.List;
 import java.util.stream.Collectors;
 
-/**
- * Video Session Mapper
- * Maps between entities and DTOs
- *
- * @author Senior Developer
- * @version 1.0.0
- */
 @Component
 public class VideoSessionMapper {
 

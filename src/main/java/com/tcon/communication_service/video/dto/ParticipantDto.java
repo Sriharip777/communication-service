@@ -9,6 +9,7 @@ import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
+import java.time.Instant;
 import java.time.LocalDateTime;
 
 /**
@@ -25,11 +26,8 @@ public class ParticipantDto {
     private ParticipantRole role;
     private String hundredMsPeerId;
 
-    @JsonFormat(pattern = "yyyy-MM-dd'T'HH:mm:ss")
-    private LocalDateTime joinedAt;
-
-    @JsonFormat(pattern = "yyyy-MM-dd'T'HH:mm:ss")
-    private LocalDateTime leftAt;
+    private Instant joinedAt;
+    private Instant leftAt;
 
     private Boolean isCameraEnabled;
     private Boolean isMicEnabled;
